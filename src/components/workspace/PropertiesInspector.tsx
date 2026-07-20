@@ -160,6 +160,16 @@ export function PropertiesInspector() {
               )}
             </button>
           </div>
+
+          {/* Wire Routing Tip */}
+          <div className="col-span-2 border-t border-surface-800 pt-3 mt-1 text-[10px] text-text-muted leading-relaxed">
+            <span className="font-bold text-accent-400">💡 Wire Routing Tip:</span>
+            <ul className="list-disc pl-4 mt-1 space-y-1">
+              <li>Double-click the wire to add a draggable bend/routing point.</li>
+              <li>Drag the blue circles to route the wire around components.</li>
+              <li>Right-click a bend point to remove it.</li>
+            </ul>
+          </div>
         </div>
       </div>
     )

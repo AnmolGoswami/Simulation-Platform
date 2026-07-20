@@ -327,6 +327,7 @@ function WorkspaceCanvas() {
         targetNodeId: params.target,
         targetPinId: params.targetHandle,
         color,
+        curved: true, // Make new wires curved/bendable by default!
       })
     },
     [addEdge, storeNodes],

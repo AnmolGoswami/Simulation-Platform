@@ -41,18 +41,6 @@ export function Header() {
   // silently dropped the save in the original flow).
   const pendingSaveRef = useRef(false)
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u)
-      if (u && pendingSaveRef.current) {
-        pendingSaveRef.current = false
-        void runSave(u)
-      }
-    })
-    return () => unsubscribe()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   const runSave = async (activeUser: User) => {
     setIsSaving(true)
     setSaveStatus('idle')
@@ -76,6 +64,18 @@ export function Header() {
       setIsSaving(false)
     }
   }
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u)
+      if (u && pendingSaveRef.current) {
+        pendingSaveRef.current = false
+        void runSave(u)
+      }
+    })
+    return () => unsubscribe()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleSave = async () => {
     if (!user) {
