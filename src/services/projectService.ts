@@ -53,8 +53,17 @@ export const projectService = {
 
     if (projectId) {
       const docRef = doc(db, PROJECTS_COLLECTION, projectId)
-      await updateDoc(docRef, projectFields)
-      return projectId
+      try {
+        await updateDoc(docRef, projectFields)
+        return projectId
+      } catch (error) {
+        console.warn(`Failed to update project ${projectId}, falling back to creating a new project document:`, error)
+        const docRefNew = await addDoc(collection(db, PROJECTS_COLLECTION), {
+          ...projectFields,
+          createdAt: now,
+        })
+        return docRefNew.id
+      }
     } else {
       const docRef = await addDoc(collection(db, PROJECTS_COLLECTION), {
         ...projectFields,
