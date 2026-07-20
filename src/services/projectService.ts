@@ -25,6 +25,65 @@ export interface ProjectData {
 
 const PROJECTS_COLLECTION = 'projects'
 
+/**
+ * Recursively search and serialize any nested arrays inside an object into a JSON string
+ * representation because Firestore does not support nested arrays.
+ */
+function serializeNestedArrays(obj: any): any {
+  if (obj === null || typeof obj !== 'object') {
+    return obj
+  }
+
+  if (Array.isArray(obj)) {
+    const hasNested = obj.some((item) => Array.isArray(item))
+    if (hasNested) {
+      return {
+        __firebase_nested_array__: JSON.stringify(obj.map(serializeNestedArrays)),
+      }
+    }
+    return obj.map(serializeNestedArrays)
+  }
+
+  const result: any = {}
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      result[key] = serializeNestedArrays(obj[key])
+    }
+  }
+  return result
+}
+
+/**
+ * Recursively find and reconstruct serialized nested arrays in objects retrieved from Firestore.
+ */
+function deserializeNestedArrays(obj: any): any {
+  if (obj === null || typeof obj !== 'object') {
+    return obj
+  }
+
+  if (obj.__firebase_nested_array__ !== undefined) {
+    try {
+      const parsed = JSON.parse(obj.__firebase_nested_array__)
+      return parsed.map(deserializeNestedArrays)
+    } catch (e) {
+      console.error('Failed to deserialize nested array:', e)
+      return []
+    }
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(deserializeNestedArrays)
+  }
+
+  const result: any = {}
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      result[key] = deserializeNestedArrays(obj[key])
+    }
+  }
+  return result
+}
+
 export const projectService = {
   /**
    * Save a project to Firestore. If projectId is provided, it updates. Otherwise it creates new.
@@ -42,11 +101,15 @@ export const projectService = {
     const cleanNodes = JSON.parse(JSON.stringify(nodes)) // strip undefined / functions
     const cleanEdges = JSON.parse(JSON.stringify(edges))
 
+    // Serialize any nested arrays so Firestore doesn't throw a "Nested arrays are not supported" error
+    const serializedNodes = serializeNestedArrays(cleanNodes)
+    const serializedEdges = serializeNestedArrays(cleanEdges)
+
     const projectFields = {
       name,
       userId,
-      nodes: cleanNodes,
-      edges: cleanEdges,
+      nodes: serializedNodes,
+      edges: serializedEdges,
       code,
       updatedAt: now,
     }
@@ -87,12 +150,16 @@ export const projectService = {
     
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data()
+      // Deserialize nested arrays
+      const deserializedNodes = deserializeNestedArrays(data.nodes || [])
+      const deserializedEdges = deserializeNestedArrays(data.edges || [])
+
       projects.push({
         id: docSnap.id,
         name: data.name || 'Untitled Project',
         userId: data.userId || userId,
-        nodes: data.nodes || [],
-        edges: data.edges || [],
+        nodes: deserializedNodes,
+        edges: deserializedEdges,
         code: data.code || '',
         updatedAt: data.updatedAt || new Date().toISOString(),
         createdAt: data.createdAt || new Date().toISOString(),
@@ -121,8 +188,8 @@ export const projectService = {
       id: docSnap.id,
       name: data.name || 'Untitled Project',
       userId: data.userId || '',
-      nodes: data.nodes || [],
-      edges: data.edges || [],
+      nodes: deserializeNestedArrays(data.nodes || []),
+      edges: deserializeNestedArrays(data.edges || []),
       code: data.code || '',
       updatedAt: data.updatedAt || new Date().toISOString(),
       createdAt: data.createdAt || new Date().toISOString(),
