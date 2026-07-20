@@ -276,64 +276,66 @@ export function useSimulationRunner() {
           }
         }
 
-        // Update audio oscillators for active buzzers
-        const currentStore = useSimulatorStore.getState()
-        const buzzerNodes = currentStore.nodes.filter((n) => n.type === 'buzzer')
-        const anyActiveBuzzer = buzzerNodes.some((n) => n.properties.isActive)
-        
-        if (anyActiveBuzzer && speedRatio !== Infinity) {
-          if (!audioCtx) {
-            try {
-              audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-            } catch (err) {
-              console.error('Failed to initialize AudioContext:', err)
+        // Update audio oscillators for active buzzers (only if simulation loop is still active)
+        if (activeLoopRef.current) {
+          const currentStore = useSimulatorStore.getState()
+          const buzzerNodes = currentStore.nodes.filter((n) => n.type === 'buzzer')
+          const anyActiveBuzzer = buzzerNodes.some((n) => n.properties.isActive)
+          
+          if (anyActiveBuzzer && speedRatio !== Infinity) {
+            if (!audioCtx) {
+              try {
+                audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+              } catch (err) {
+                console.error('Failed to initialize AudioContext:', err)
+              }
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+              audioCtx.resume()
             }
           }
-          if (audioCtx && audioCtx.state === 'suspended') {
-            audioCtx.resume()
-          }
-        }
 
-        buzzerNodes.forEach((node) => {
-          const isActive = node.properties.isActive === true && speedRatio !== Infinity
-          const freq = Number(node.properties.frequency || 2000)
+          buzzerNodes.forEach((node) => {
+            const isActive = node.properties.isActive === true && speedRatio !== Infinity
+            const freq = Number(node.properties.frequency || 2000)
 
-          if (isActive && audioCtx) {
-            if (!oscillators[node.id]) {
-              try {
-                const osc = audioCtx.createOscillator()
-                const gain = audioCtx.createGain()
-                osc.type = 'sine'
-                osc.frequency.setValueAtTime(freq, audioCtx.currentTime)
-                gain.gain.setValueAtTime(0.04, audioCtx.currentTime)
-                osc.connect(gain)
-                gain.connect(audioCtx.destination)
-                osc.start()
-                oscillators[node.id] = { osc, gain }
-              } catch (err) {
-                console.error('Failed to play buzzer audio:', err)
+            if (isActive && audioCtx) {
+              if (!oscillators[node.id]) {
+                try {
+                  const osc = audioCtx.createOscillator()
+                  const gain = audioCtx.createGain()
+                  osc.type = 'sine'
+                  osc.frequency.setValueAtTime(freq, audioCtx.currentTime)
+                  gain.gain.setValueAtTime(0.04, audioCtx.currentTime)
+                  osc.connect(gain)
+                  gain.connect(audioCtx.destination)
+                  osc.start()
+                  oscillators[node.id] = { osc, gain }
+                } catch (err) {
+                  console.error('Failed to play buzzer audio:', err)
+                }
+              } else {
+                const item = oscillators[node.id]
+                try {
+                  item.osc.frequency.setValueAtTime(freq, audioCtx.currentTime)
+                } catch (e) {
+                  // ignore
+                }
               }
             } else {
-              const item = oscillators[node.id]
-              try {
-                item.osc.frequency.setValueAtTime(freq, audioCtx.currentTime)
-              } catch (e) {
-                // ignore
+              if (oscillators[node.id]) {
+                try {
+                  oscillators[node.id].osc.stop()
+                  oscillators[node.id].osc.disconnect()
+                  oscillators[node.id].gain.disconnect()
+                } catch (e) {
+                  // ignore
+                }
+                delete oscillators[node.id]
               }
             }
-          } else {
-            if (oscillators[node.id]) {
-              try {
-                oscillators[node.id].osc.stop()
-                oscillators[node.id].osc.disconnect()
-                oscillators[node.id].gain.disconnect()
-              } catch (e) {
-                // ignore
-              }
-              delete oscillators[node.id]
-            }
-          }
-        })
+          })
+        }
 
         // 4d. Update diagnostics
         setSimulationDiagnostics({
@@ -386,6 +388,9 @@ export function useSimulationRunner() {
           await new Promise((resolve) => setTimeout(resolve, waitTime))
         }
       }
+      
+      // Ensure all audio ceases immediately when loop terminates
+      stopAudio()
     }
 
     startExecution()
