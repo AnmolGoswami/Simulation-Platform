@@ -244,7 +244,7 @@ export function updateSimulationPhysics(
       const current = getComponentCurrent(node.id)
       
       const isFailed = activeFaults['buzzer-failure']
-      const isActive = voltageDiff >= 1.5 && current >= 0.005 && !isFailed
+      const isActive = voltageDiff >= 0.1 && current >= 0.00005 && !isFailed
       
       let freq = 2000 // default 2kHz active buzzer frequency
       

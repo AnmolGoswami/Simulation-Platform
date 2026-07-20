@@ -36,8 +36,13 @@ export function useSimulationRunner() {
       return
     }
 
-    // Audio setup for buzzers
+    // Audio setup for buzzers - pre-create synchronously inside user click gesture stack
     let audioCtx: AudioContext | null = null
+    try {
+      audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    } catch (e) {
+      console.error('Failed to pre-create AudioContext:', e)
+    }
     const oscillators: Record<string, { osc: OscillatorNode; gain: GainNode }> = {}
 
     const stopAudio = () => {
@@ -282,15 +287,8 @@ export function useSimulationRunner() {
           const buzzerNodes = currentStore.nodes.filter((n) => n.type === 'buzzer')
           const anyActiveBuzzer = buzzerNodes.some((n) => n.properties.isActive)
           
-          if (anyActiveBuzzer && speedRatio !== Infinity) {
-            if (!audioCtx) {
-              try {
-                audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-              } catch (err) {
-                console.error('Failed to initialize AudioContext:', err)
-              }
-            }
-            if (audioCtx && audioCtx.state === 'suspended') {
+          if (anyActiveBuzzer && speedRatio !== Infinity && audioCtx) {
+            if (audioCtx.state === 'suspended') {
               audioCtx.resume()
             }
           }
