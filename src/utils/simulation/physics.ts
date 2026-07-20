@@ -235,6 +235,57 @@ export function updateSimulationPhysics(
       const v2 = getPinVoltage(node.id, p2)
       nodePropertyUpdates[node.id].storedCapVoltage = v1 - v2
     }
+
+    // L. Buzzer frequency and active state
+    if (node.type === 'buzzer') {
+      const posV = getPinVoltage(node.id, 'pos')
+      const negV = getPinVoltage(node.id, 'neg')
+      const voltageDiff = Math.abs(posV - negV)
+      const current = getComponentCurrent(node.id)
+      
+      const isFailed = activeFaults['buzzer-failure']
+      const isActive = voltageDiff >= 1.5 && current >= 0.005 && !isFailed
+      
+      let freq = 2000 // default 2kHz active buzzer frequency
+      
+      if (isActive) {
+        // Find if a microcontoller is outputting a tone on a connected pin
+        // Let's look at the gpioPinStates to see if there's any active numeric frequency on any pin
+        // connected to the same net as node.id:pos
+        const startPin = `${node.id}:pos`
+        const visited = new Set<string>()
+        const queue = [startPin]
+        let foundFreq: number | null = null
+
+        while (queue.length > 0) {
+          const currentPin = queue.shift()!
+          if (visited.has(currentPin)) continue
+          visited.add(currentPin)
+
+          const [currNodeId, currPinId] = currentPin.split(':')
+          const mcuPinState = gpioPinStates[currNodeId]?.[currPinId]
+          if (typeof mcuPinState === 'number' && mcuPinState > 0) {
+            foundFreq = mcuPinState
+            break
+          }
+
+          // Trace wires to find other pins on the same electrical net
+          edges.forEach((edge) => {
+            const pA = `${edge.sourceNodeId}:${edge.sourcePinId}`
+            const pB = `${edge.targetNodeId}:${edge.targetPinId}`
+            if (pA === currentPin) queue.push(pB)
+            if (pB === currentPin) queue.push(pA)
+          })
+        }
+
+        if (foundFreq !== null) {
+          freq = foundFreq
+        }
+      }
+
+      nodePropertyUpdates[node.id].isActive = isActive
+      nodePropertyUpdates[node.id].frequency = isActive ? freq : 0
+    }
   })
 
   // 2. Wire current values (for wire highlighting / current-flow visualization)

@@ -655,13 +655,36 @@ export function ComponentSVG({
         }
 
       case 'buzzer':
-        return (
-          <g>
-            <circle cx="20" cy="20" r="16" fill="#181c24" stroke={stroke} strokeWidth={strokeWidth} />
-            <circle cx="20" cy="20" r="8" fill="none" stroke="#3f4756" strokeWidth="1" />
-            <circle cx="20" cy="20" r="3" fill="#3f4756" />
-          </g>
-        )
+        {
+          const isActive = properties?.isActive === true
+          return (
+            <g>
+              <defs>
+                <radialGradient id="buzzer-glow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#fbbf24" stopOpacity="0" />
+                </radialGradient>
+              </defs>
+              {isActive && (
+                <g>
+                  {/* Glowing background */}
+                  <circle cx="20" cy="20" r="28" fill="url(#buzzer-glow)" className="animate-pulse" />
+                  
+                  {/* Sound waves/pulses */}
+                  <circle cx="20" cy="20" r="22" fill="none" stroke="#fbbf24" strokeWidth="0.8" opacity="0.3" strokeDasharray="3,3" className="animate-spin" style={{ animationDuration: '6s' }} />
+                  <circle cx="20" cy="20" r="25" fill="none" stroke="#fbbf24" strokeWidth="0.6" opacity="0.2" strokeDasharray="2,4" className="animate-spin" style={{ animationDuration: '10s', animationDirection: 'reverse' }} />
+                  
+                  {/* Sound wave arcs */}
+                  <path d="M 4 20 A 16 16 0 0 1 8 10" fill="none" stroke="#fbbf24" strokeWidth="1.2" strokeLinecap="round" className="animate-bounce" />
+                  <path d="M 36 20 A 16 16 0 0 0 32 10" fill="none" stroke="#fbbf24" strokeWidth="1.2" strokeLinecap="round" className="animate-bounce" />
+                </g>
+              )}
+              <circle cx="20" cy="20" r="16" fill="#181c24" stroke={isActive ? '#fbbf24' : stroke} strokeWidth={isActive ? 1.5 : strokeWidth} />
+              <circle cx="20" cy="20" r="8" fill="none" stroke={isActive ? '#fbbf24' : '#3f4756'} strokeWidth="1" />
+              <circle cx="20" cy="20" r="3" fill={isActive ? '#fbbf24' : '#3f4756'} />
+            </g>
+          )
+        }
 
       case 'pc-fan':
         {
