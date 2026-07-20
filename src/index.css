@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+@import '@xyflow/react/dist/style.css';
+
+@theme {
+  --color-surface-950: #0a0e17;
+  --color-surface-900: #0f1419;
+  --color-surface-850: #151b24;
+  --color-surface-800: #1a2230;
+  --color-surface-750: #1f2937;
+  --color-surface-700: #243044;
+  --color-surface-600: #2d3a4f;
+  --color-surface-500: #3d4f6a;
+  --color-accent-500: #3b82f6;
+  --color-accent-400: #60a5fa;
+  --color-accent-600: #2563eb;
+  --color-success-500: #22c55e;
+  --color-warning-500: #f59e0b;
+  --color-danger-500: #ef4444;
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-border: #2d3a4f;
+  --color-border-light: #3d4f6a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  background-color: var(--color-surface-950);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-600);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-surface-500);
+}
+
+.react-flow__node {
+  cursor: grab;
+}
+
+.react-flow__node.selected {
+  outline: none;
+}
+
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--color-accent-400);
+  background: var(--color-surface-900);
+}
+
+.panel-resize-handle {
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle.active {
+  background-color: var(--color-accent-500);
+}
+
+/* Layer ordering: ensure edges (wires) render above nodes (components) */
+.react-flow__edges {
+  z-index: 100 !important;
+  pointer-events: none;
+}
+.react-flow__edges path {
+  pointer-events: visibleStroke;
+}
+.react-flow__nodes {
+  z-index: 50 !important;
+}

@@ -1,0 +1,123 @@
+/**
+ * Transpiles Arduino/ESP32 C++ code into asynchronous JavaScript
+ * so it can be executed natively in the browser runtime.
+ */
+export function transpileArduinoToJS(code: string): { jsCode: string; customFunctions: string[] } {
+  // Step 1: Strip comments to prevent matching keywords inside comments
+  let cleanCode = code
+    .replace(/\/\*[\s\S]*?\*\//g, '') // Strip block comments
+    .replace(/\/\/.*/g, '')           // Strip line comments
+
+  const customFunctions: string[] = []
+
+  // Step 2: Extract and replace class instantiations
+  // e.g. LiquidCrystal_I2C lcd(0x27, 16, 2); -> let lcd = new LiquidCrystal_I2C(0x27, 16, 2);
+  // e.g. DallasTemperature sensors(&oneWire); -> let sensors = new DallasTemperature(oneWire);
+  const classPatterns = [
+    'LiquidCrystal_I2C',
+    'Adafruit_SSD1306',
+    'Adafruit_SH1106G',
+    'DHT',
+    'OneWire',
+    'DallasTemperature',
+  ]
+
+  classPatterns.forEach((cls) => {
+    const regex = new RegExp(`\\b${cls}\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(([^)]*)\\)\\s*;`, 'g')
+    cleanCode = cleanCode.replace(regex, (_, name, args) => {
+      // Strip address-of operator '&' from args for JS compatibility
+      const cleanArgs = args.replace(/&\s*([a-zA-Z_][a-zA-Z0-9_]*)/g, '$1')
+      return `let ${name} = new ${cls}(${cleanArgs});`
+    })
+  })
+
+  // Step 3: Find and transpile function declarations
+  // e.g. void setup() { ... } -> async function setup() { ... }
+  // e.g. int calculate(int a, float b) { ... } -> async function calculate(a, b) { ... }
+  const funcRegex = /\b(void|int|float|double|long|bool|boolean|byte|char|uint8_t|uint16_t|uint32_t|int16_t|int32_t|String)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*\{/g
+  
+  let match
+  const tempDeclarations: { fullMatch: string; name: string; params: string }[] = []
+  
+  // Find all functions first
+  while ((match = funcRegex.exec(cleanCode)) !== null) {
+    const [fullMatch, , name, params] = match
+    tempDeclarations.push({ fullMatch, name, params })
+    if (name !== 'setup' && name !== 'loop') {
+      customFunctions.push(name)
+    }
+  }
+
+  // Replace function declarations
+  tempDeclarations.forEach(({ fullMatch, name, params }) => {
+    // Strip type keywords from parameter list (e.g. "int pin, float val" -> "pin, val")
+    const cleanParams = params
+      .split(',')
+      .map((p) => {
+        const parts = p.trim().split(/\s+/)
+        return parts[parts.length - 1] // Keep only the parameter name
+      })
+      .filter(Boolean)
+      .join(', ')
+
+    cleanCode = cleanCode.replace(fullMatch, `async function ${name}(${cleanParams}) {`)
+  })
+
+  // Step 4: Replace primitive types in variable declarations
+  // e.g. const int led = 13; -> const led = 13;
+  // e.g. int val = 0; -> let val = 0;
+  const types = [
+    'int', 'float', 'double', 'long', 'short', 'char', 'bool', 'boolean', 'byte',
+    'uint8_t', 'uint16_t', 'uint32_t', 'int16_t', 'int32_t', 'String', 'unsigned int', 'unsigned long'
+  ]
+  
+  types.forEach((type) => {
+    // Const declarations
+    const constRegex = new RegExp(`\\bconst\\s+${type}\\b`, 'g')
+    cleanCode = cleanCode.replace(constRegex, 'const')
+
+    // Regular declarations
+    const varRegex = new RegExp(`\\b${type}\\b`, 'g')
+    cleanCode = cleanCode.replace(varRegex, 'let')
+  })
+
+  // Step 5: Replace C++ array declarations
+  // e.g. let pins[] = {2, 3, 4}; -> let pins = [2, 3, 4];
+  // e.g. let values[3] = {10, 20, 30}; -> let values = [10, 20, 30];
+  cleanCode = cleanCode.replace(
+    /\b(let|const)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*\d*\s*\]\s*=\s*\{([^}]+)\}\s*;/g,
+    '$1 $2 = [$3];'
+  )
+
+  // Step 6: Inject await for delay calls
+  // delay(1000); -> await delay(1000);
+  cleanCode = cleanCode.replace(/\bdelay\(([^)]+)\)\s*;/g, 'await delay($1);')
+  cleanCode = cleanCode.replace(/\bdelayMicroseconds\(([^)]+)\)\s*;/g, 'await delayMicroseconds($1);')
+
+  // Step 7: Inject await for user custom function calls
+  // e.g. flashLed(); -> await flashLed();
+  customFunctions.forEach((funcName) => {
+    const callRegex = new RegExp(`(?<!async\\s+function\\s+)(?<!function\\s+)\\b${funcName}\\s*\\(([^)]*)\\)\\s*;`, 'g')
+    cleanCode = cleanCode.replace(callRegex, `await ${funcName}($1);`)
+  })
+
+  // Step 8: Replace #include directives with comments/nothing
+  cleanCode = cleanCode.replace(/#include\s+<[^>]+>/g, '')
+  cleanCode = cleanCode.replace(/#include\s+"[^"]+"/g, '')
+  
+  // Step 9: Replace #define constants
+  // e.g. #define LED_PIN 13 -> const LED_PIN = 13;
+  cleanCode = cleanCode.replace(/#define\s+([a-zA-Z0-9_]+)\s+([^\n\r]+)/g, 'const $1 = $2;')
+
+  // Step 10: Map digital state and mode constants if not already declared
+  // Make sure setup and loop are returned as properties of the execution
+  const wrapperCode = `
+    ${cleanCode}
+    return {
+      setup: typeof setup !== 'undefined' ? setup : async () => {},
+      loop: typeof loop !== 'undefined' ? loop : async () => {}
+    };
+  `
+
+  return { jsCode: wrapperCode, customFunctions }
+}
