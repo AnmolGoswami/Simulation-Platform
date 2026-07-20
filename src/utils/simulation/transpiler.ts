@@ -34,7 +34,7 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
   // Step 3: Find and transpile function declarations
   // e.g. void setup() { ... } -> async function setup() { ... }
   // e.g. int calculate(int a, float b) { ... } -> async function calculate(a, b) { ... }
-  const funcRegex = /\b(void|int|float|double|long|bool|boolean|byte|char|uint8_t|uint16_t|uint32_t|int16_t|int32_t|String)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*\{/g
+  const funcRegex = /\b(void|unsigned\s+int|unsigned\s+long|unsigned|int|float|double|long|short|char|bool|boolean|byte|uint8_t|uint16_t|uint32_t|uint64_t|int16_t|int32_t|int64_t|size_t|String)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)\s*\{/g
   
   let match
   const tempDeclarations: { fullMatch: string; name: string; params: string }[] = []
@@ -67,17 +67,19 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
   // e.g. const int led = 13; -> const led = 13;
   // e.g. int val = 0; -> let val = 0;
   const types = [
-    'int', 'float', 'double', 'long', 'short', 'char', 'bool', 'boolean', 'byte',
-    'uint8_t', 'uint16_t', 'uint32_t', 'int16_t', 'int32_t', 'String', 'unsigned int', 'unsigned long'
-  ]
+    'unsigned int', 'unsigned long', 'unsigned',
+    'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t', 'int16_t', 'int32_t', 'int64_t', 'size_t',
+    'int', 'float', 'double', 'long', 'short', 'char', 'bool', 'boolean', 'byte', 'String'
+  ].sort((a, b) => b.length - a.length)
   
   types.forEach((type) => {
+    const typeRegexStr = type.replace(/\s+/g, '\\s+')
     // Const declarations
-    const constRegex = new RegExp(`\\bconst\\s+${type}\\b`, 'g')
+    const constRegex = new RegExp(`\\bconst\\s+${typeRegexStr}\\b`, 'g')
     cleanCode = cleanCode.replace(constRegex, 'const')
 
     // Regular declarations
-    const varRegex = new RegExp(`\\b${type}\\b`, 'g')
+    const varRegex = new RegExp(`\\b${typeRegexStr}\\b`, 'g')
     cleanCode = cleanCode.replace(varRegex, 'let')
   })
 
