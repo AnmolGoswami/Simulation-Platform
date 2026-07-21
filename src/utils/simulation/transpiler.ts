@@ -55,13 +55,20 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
       .split(',')
       .map((p) => {
         const parts = p.trim().split(/\s+/)
-        return parts[parts.length - 1] // Keep only the parameter name
+        let paramName = parts[parts.length - 1] // Keep only the parameter name
+        // Strip any leading pointers (*) or references (&) from the parameter name for JS compatibility
+        paramName = paramName.replace(/^[&*]+/, '')
+        return paramName
       })
       .filter(Boolean)
       .join(', ')
 
     cleanCode = cleanCode.replace(fullMatch, `async function ${name}(${cleanParams}) {`)
   })
+
+  // Step 3.5: Strip unary address-of operator '&' from arguments (e.g. &oneWire -> oneWire)
+  // this is safe for bitwise AND (&) and logical AND (&&) as it checks bounds.
+  cleanCode = cleanCode.replace(/(?<!\w)(?<!&)&(?!&)\s*([a-zA-Z_][a-zA-Z0-9_]*)\b/g, '$1')
 
   // Step 4: Replace primitive types in variable declarations
   // e.g. const int led = 13; -> const led = 13;
