@@ -84,7 +84,8 @@ export function getPinNetState(
 export function createSimulationContext(
   nodeId: string,
   simStartRealTime: number,
-  getSpeedRatio: () => number
+  getSpeedRatio: () => number,
+  onPinStateChange?: (pinId: string, value: any) => void
 ) {
   const store = useSimulatorStore.getState()
 
@@ -96,6 +97,14 @@ export function createSimulationContext(
   const resolvePin = (pin: number | string): string => normalizePinId(boardType, pin)
 
   let lastYield = performance.now()
+
+  const setPinState = (pinStr: string, value: any) => {
+    if (onPinStateChange) {
+      onPinStateChange(pinStr, value)
+    } else {
+      store.updateGpioPinState(nodeId, pinStr, value)
+    }
+  }
 
   return {
     _yield: async () => {
@@ -145,11 +154,11 @@ export function createSimulationContext(
     pinMode: (pin: number | string, mode: number) => {
       const pinStr = resolvePin(pin)
       const modeStr = mode === INPUT ? 'INPUT' : mode === OUTPUT ? 'OUTPUT' : 'INPUT_PULLUP'
-      store.updateGpioPinState(nodeId, pinStr, modeStr)
+      setPinState(pinStr, modeStr)
     },
     digitalWrite: (pin: number | string, val: number) => {
       const pinStr = resolvePin(pin)
-      store.updateGpioPinState(nodeId, pinStr, val === HIGH ? 'HIGH' : 'LOW')
+      setPinState(pinStr, val === HIGH ? 'HIGH' : 'LOW')
     },
     digitalRead: (pin: number | string) => {
       const pinStr = resolvePin(pin)
@@ -160,7 +169,7 @@ export function createSimulationContext(
     // Analog & PWM APIs
     analogWrite: (pin: number | string, val: number) => {
       // PWM value is 0-255. Convert to fraction/number representation
-      store.updateGpioPinState(nodeId, resolvePin(pin), val)
+      setPinState(resolvePin(pin), val)
     },
     analogRead: (pin: number | string) => {
       // Find what sensor is connected to this analog pin, and return its value mapped to 0-1023
@@ -226,10 +235,10 @@ export function createSimulationContext(
       return 0
     },
     tone: (pin: number | string, frequency: number) => {
-      store.updateGpioPinState(nodeId, resolvePin(pin), frequency)
+      setPinState(resolvePin(pin), frequency)
     },
     noTone: (pin: number | string) => {
-      store.updateGpioPinState(nodeId, resolvePin(pin), 0)
+      setPinState(resolvePin(pin), 0)
     },
 
     // Serial

@@ -19,8 +19,6 @@ export function useSimulationRunner() {
   const setSimulationStatus = useSimulatorStore((s) => s.setSimulationStatus)
   const addLog = useSimulatorStore((s) => s.addLog)
   const setSimulationDiagnostics = useSimulatorStore((s) => s.setSimulationDiagnostics)
-  const updateNodeProperties = useSimulatorStore((s) => s.updateNodeProperties)
-  const updateEdge = useSimulatorStore((s) => s.updateEdge)
   const resetSimulationState = useSimulatorStore((s) => s.resetSimulationState)
   const addTimelineEvent = useSimulatorStore((s) => s.addTimelineEvent)
 
@@ -44,6 +42,12 @@ export function useSimulationRunner() {
       console.error('Failed to pre-create AudioContext:', e)
     }
     const oscillators: Record<string, { osc: OscillatorNode; gain: GainNode }> = {}
+
+    // Cache layers for batching/throttling state updates to prevent React re-render lockups
+    const localNodeProperties: Record<string, any> = {}
+    const localEdgeProperties: Record<string, any> = {}
+    const localGpioPinStates: Record<string, Record<string, any>> = {}
+    let lastUiWriteTime = performance.now()
 
     const stopAudio = () => {
       Object.entries(oscillators).forEach(([id, item]) => {
@@ -105,7 +109,17 @@ export function useSimulationRunner() {
     }
 
     const runtimes: BoardRuntime[] = boards.map((board) => {
-      const context = createSimulationContext(board.id, simStartRealTime, getSpeedRatio)
+      const context = createSimulationContext(
+        board.id,
+        simStartRealTime,
+        getSpeedRatio,
+        (pinId, value) => {
+          if (!localGpioPinStates[board.id]) {
+            localGpioPinStates[board.id] = {}
+          }
+          localGpioPinStates[board.id][pinId] = value
+        }
+      )
       const keys = Object.keys(context)
       const values = Object.values(context)
 
@@ -207,14 +221,29 @@ export function useSimulationRunner() {
             stepsRun < MAX_PHYSICS_STEPS_PER_FRAME
           ) {
             const store = useSimulatorStore.getState()
+            
+            // Construct cache-merged nodes, edges, and pin states for the physics solver
+            const currentNodes = store.nodes.map((n) => {
+              const localProps = localNodeProperties[n.id]
+              return localProps ? { ...n, properties: { ...n.properties, ...localProps } } : n
+            })
+            const currentEdges = store.edges.map((e) => {
+              const localProps = localEdgeProperties[e.id]
+              return localProps ? { ...e, ...localProps } : e
+            })
+            const mergedGpioPinStates = { ...store.gpioPinStates }
+            Object.entries(localGpioPinStates).forEach(([nodeId, pins]) => {
+              mergedGpioPinStates[nodeId] = { ...mergedGpioPinStates[nodeId], ...pins }
+            })
+
             const physicsUpdates = updateSimulationPhysics(
-              store.nodes,
-              store.edges,
-              store.gpioPinStates,
+              currentNodes,
+              currentEdges,
+              mergedGpioPinStates,
               PHYSICS_FIXED_DT
             )
 
-            // Apply physics updates back to workspace nodes & edges
+            // Apply physics updates back to local caches
             Object.entries(physicsUpdates.nodes).forEach(([nodeId, props]) => {
               if (Object.keys(props).length > 0) {
                 if (props.blown === true) {
@@ -226,12 +255,12 @@ export function useSimulationRunner() {
                     addTimelineEvent('fault_injected', `💥 Fuse Blown: ${name}`)
                   }
                 }
-                updateNodeProperties(nodeId, props)
+                localNodeProperties[nodeId] = { ...localNodeProperties[nodeId], ...props }
               }
             })
             Object.entries(physicsUpdates.edges).forEach(([edgeId, props]) => {
               if (Object.keys(props).length > 0) {
-                updateEdge(edgeId, props)
+                localEdgeProperties[edgeId] = { ...localEdgeProperties[edgeId], ...props }
               }
             })
 
@@ -388,6 +417,57 @@ export function useSimulationRunner() {
           await new Promise((resolve) => setTimeout(resolve, waitTime))
           lastFrameYieldTime = performance.now()
         }
+        // Throttled UI write to Zustand store to prevent high-frequency React re-renders
+        if (now - lastUiWriteTime > 16) {
+          useSimulatorStore.setState((state) => {
+            const nextNodes = state.nodes.map((n) => {
+              const localProps = localNodeProperties[n.id]
+              return localProps ? { ...n, properties: { ...n.properties, ...localProps } } : n
+            })
+            const nextEdges = state.edges.map((e) => {
+              const localProps = localEdgeProperties[e.id]
+              return localProps ? { ...e, ...localProps } : e
+            })
+            const nextGpioPinStates = { ...state.gpioPinStates }
+            Object.entries(localGpioPinStates).forEach(([nodeId, pins]) => {
+              nextGpioPinStates[nodeId] = { ...nextGpioPinStates[nodeId], ...pins }
+            })
+            return {
+              nodes: nextNodes,
+              edges: nextEdges,
+              gpioPinStates: nextGpioPinStates,
+            }
+          })
+          
+          for (const key in localNodeProperties) delete localNodeProperties[key]
+          for (const key in localEdgeProperties) delete localEdgeProperties[key]
+          for (const key in localGpioPinStates) delete localGpioPinStates[key]
+          
+          lastUiWriteTime = now
+        }
+      }
+      
+      // Ensure all pending cached properties are flushed to the store upon termination
+      if (Object.keys(localNodeProperties).length > 0 || Object.keys(localEdgeProperties).length > 0 || Object.keys(localGpioPinStates).length > 0) {
+        useSimulatorStore.setState((state) => {
+          const nextNodes = state.nodes.map((n) => {
+            const localProps = localNodeProperties[n.id]
+            return localProps ? { ...n, properties: { ...n.properties, ...localProps } } : n
+          })
+          const nextEdges = state.edges.map((e) => {
+            const localProps = localEdgeProperties[e.id]
+            return localProps ? { ...e, ...localProps } : e
+          })
+          const nextGpioPinStates = { ...state.gpioPinStates }
+          Object.entries(localGpioPinStates).forEach(([nodeId, pins]) => {
+            nextGpioPinStates[nodeId] = { ...nextGpioPinStates[nodeId], ...pins }
+          })
+          return {
+            nodes: nextNodes,
+            edges: nextEdges,
+            gpioPinStates: nextGpioPinStates,
+          }
+        })
       }
       
       // Ensure all audio ceases immediately when loop terminates
