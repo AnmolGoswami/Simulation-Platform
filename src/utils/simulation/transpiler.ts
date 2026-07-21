@@ -67,7 +67,7 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
   // e.g. const int led = 13; -> const led = 13;
   // e.g. int val = 0; -> let val = 0;
   const types = [
-    'unsigned int', 'unsigned long', 'unsigned',
+    'unsigned char', 'unsigned short', 'unsigned int', 'unsigned long', 'unsigned byte', 'unsigned',
     'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t', 'int16_t', 'int32_t', 'int64_t', 'size_t',
     'int', 'float', 'double', 'long', 'short', 'char', 'bool', 'boolean', 'byte', 'String'
   ].sort((a, b) => b.length - a.length)
@@ -78,10 +78,16 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
     const constRegex = new RegExp(`\\bconst\\s+${typeRegexStr}\\b`, 'g')
     cleanCode = cleanCode.replace(constRegex, 'const')
 
-    // Regular declarations
-    const varRegex = new RegExp(`\\b${typeRegexStr}\\b`, 'g')
-    cleanCode = cleanCode.replace(varRegex, 'let')
+    // Regular declarations — only match type declarations when followed by a variable identifier
+    const varRegex = new RegExp(`\\b${typeRegexStr}\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b`, 'g')
+    cleanCode = cleanCode.replace(varRegex, 'let $1')
   })
+
+  // Step 4.5: Inject cooperative multitasking _yield() checks inside loops
+  // to prevent browser thread freeze during long or infinite loops
+  cleanCode = cleanCode.replace(/\bwhile\s*\((.+?)\)\s*\{/g, 'while ($1) { await _yield();')
+  cleanCode = cleanCode.replace(/\bfor\s*\((.+?)\)\s*\{/g, 'for ($1) { await _yield();')
+  cleanCode = cleanCode.replace(/\bdo\s*\{/g, 'do { await _yield();')
 
   // Step 5: Replace C++ array declarations
   // e.g. let pins[] = {2, 3, 4}; -> let pins = [2, 3, 4];

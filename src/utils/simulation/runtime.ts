@@ -95,7 +95,16 @@ export function createSimulationContext(
 
   const resolvePin = (pin: number | string): string => normalizePinId(boardType, pin)
 
+  let lastYield = performance.now()
+
   return {
+    _yield: async () => {
+      const now = performance.now()
+      if (now - lastYield > 50) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        lastYield = performance.now()
+      }
+    },
     // Mode Constants
     HIGH,
     LOW,
