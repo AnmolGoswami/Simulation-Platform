@@ -4,7 +4,7 @@ import { ComponentSVG } from '@/assets/component-svgs/ComponentSVG'
 import { BreadboardNode } from '@/components/breadboard/Breadboard'
 import { getComponentDefinition } from '@/utils/componentDefinitions'
 import { useSimulatorStore } from '@/store/useSimulatorStore'
-import type { ComponentType, PinDefinition } from '@/types'
+import type { ComponentType, PinDefinition, WorkspaceNode } from '@/types'
 
 export interface SimulatorNodeData {
   componentType: ComponentType
@@ -12,6 +12,41 @@ export interface SimulatorNodeData {
   rotation: number
   color?: string
   [key: string]: unknown
+}
+
+function getRotatedPinPos(
+  node: WorkspaceNode,
+  pin: { x: number; y: number },
+  width: number,
+  height: number
+): { x: number; y: number } {
+  const rotation = Number(node.properties.rotation || 0)
+  
+  // Account for the padding wrapper offset of 4px in SimulatorNode
+  const isBreadboard = node.type === 'breadboard'
+  const offset = isBreadboard ? 0 : 4
+  
+  const px = pin.x + offset
+  const py = pin.y + offset
+  
+  const cx = (width + offset * 2) / 2
+  const cy = (height + offset * 2) / 2
+  
+  if (rotation === 0) {
+    return { x: node.position.x + px, y: node.position.y + py }
+  }
+  
+  const rad = (rotation * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  
+  const dx = px - cx
+  const dy = py - cy
+  
+  const rx = cx + (dx * cos - dy * sin)
+  const ry = cy + (dx * sin + dy * cos)
+  
+  return { x: node.position.x + rx, y: node.position.y + ry }
 }
 
 function getBreadboardConnectedHoles(pinId: string, splitPowerRails: boolean): string[] {
@@ -59,6 +94,34 @@ function SimulatorComponentNode({ id, data, selected }: NodeProps) {
   const splitPowerRails = storeNode?.properties.splitPowerRails as boolean || false
   const wireToolActive = useSimulatorStore((s) => s.wireToolActive)
   const updateNodeProperties = useSimulatorStore((s) => s.updateNodeProperties)
+  const allNodes = useSimulatorStore((s) => s.nodes)
+
+  const getConnectedBreadboardHole = (pin: PinDefinition) => {
+    if (nodeData.componentType === 'breadboard' || !storeNode) return null
+    
+    const breadboards = allNodes.filter((n) => n.type === 'breadboard')
+    if (breadboards.length === 0) return null
+    
+    const w = def?.defaultWidth ?? 60
+    const h = def?.defaultHeight ?? 60
+    const absPos = getRotatedPinPos(storeNode, pin, w, h)
+    
+    for (const bb of breadboards) {
+      const bbDef = getComponentDefinition('breadboard')
+      if (!bbDef) continue
+      
+      const bbW = bbDef.defaultWidth ?? 400
+      const bbH = bbDef.defaultHeight ?? 200
+      
+      for (const bbPin of bbDef.pins) {
+        const bbAbs = getRotatedPinPos(bb, bbPin, bbW, bbH)
+        if (Math.hypot(absPos.x - bbAbs.x, absPos.y - bbAbs.y) < 8.0) {
+          return { bbId: bb.id, label: bbPin.label }
+        }
+      }
+    }
+    return null
+  }
 
   const handleNodeClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
@@ -99,6 +162,7 @@ function SimulatorComponentNode({ id, data, selected }: NodeProps) {
     const isAnalog = pin.isAnalog || pin.type === 'analog'
     const isPWM = pin.isPWM
     const direction = pin.direction ? pin.direction.toUpperCase() : 'GPIO'
+    const connectedHole = getConnectedBreadboardHole(pin)
 
     return (
       <div className="absolute bottom-full left-1/2 z-50 mb-2 w-40 -translate-x-1/2 rounded-md border border-surface-700 bg-surface-900/95 p-2 text-[10px] text-text-secondary shadow-xl backdrop-blur-sm pointer-events-none">
@@ -128,6 +192,11 @@ function SimulatorComponentNode({ id, data, selected }: NodeProps) {
           {pin.type === 'power' && <span className="bg-red-500/10 text-red-400 px-1 rounded-sm text-[8px]">POWER</span>}
           {pin.type === 'ground' && <span className="bg-gray-500/10 text-gray-400 px-1 rounded-sm text-[8px]">GND</span>}
         </div>
+        {connectedHole && (
+          <div className="mt-1.5 border-t border-success-500/30 pt-1 text-success-400 font-semibold text-[8.5px] flex items-center gap-1 select-none">
+            🔌 Connected to {connectedHole.label}
+          </div>
+        )}
       </div>
     )
   }

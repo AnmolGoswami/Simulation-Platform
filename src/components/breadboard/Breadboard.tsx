@@ -60,8 +60,13 @@ export function BreadboardSVG({ width = 400, height = 200, selected = false }: B
         const y = rowStartY + rowIdx * holeSpacing
         return (
           <g key={row}>
-            <text x="10" y={y + 3} fill="#6b7280" fontSize="6" fontWeight="bold">
-              {row}
+            {/* Left label */}
+            <text x="11" y={y + 2.5} fill="#6b7280" fontSize="6.5" fontWeight="bold" textAnchor="middle">
+              {row.toUpperCase()}
+            </text>
+            {/* Right label */}
+            <text x="388" y={y + 2.5} fill="#6b7280" fontSize="6.5" fontWeight="bold" textAnchor="middle">
+              {row.toUpperCase()}
             </text>
             {Array.from({ length: COLS }, (_, col) => {
               const x = startX + col * holeSpacing
@@ -81,8 +86,13 @@ export function BreadboardSVG({ width = 400, height = 200, selected = false }: B
         const y = rowStartY + (rowIdx + 5) * holeSpacing + 8
         return (
           <g key={row}>
-            <text x="10" y={y + 3} fill="#6b7280" fontSize="6" fontWeight="bold">
-              {row}
+            {/* Left label */}
+            <text x="11" y={y + 2.5} fill="#6b7280" fontSize="6.5" fontWeight="bold" textAnchor="middle">
+              {row.toUpperCase()}
+            </text>
+            {/* Right label */}
+            <text x="388" y={y + 2.5} fill="#6b7280" fontSize="6.5" fontWeight="bold" textAnchor="middle">
+              {row.toUpperCase()}
             </text>
             {Array.from({ length: COLS }, (_, col) => {
               const x = startX + col * holeSpacing
@@ -97,14 +107,30 @@ export function BreadboardSVG({ width = 400, height = 200, selected = false }: B
         )
       })}
 
-      {/* Column numbers */}
-      {[1, 5, 10, 15, 20, 25, 30].map((num) => (
+      {/* Column numbers - Top */}
+      {Array.from({ length: COLS }, (_, col) => col + 1).map((num) => (
         <text
-          key={num}
+          key={`col-num-top-${num}`}
           x={startX + (num - 1) * holeSpacing}
-          y={height - 28}
+          y={38}
           fill="#6b7280"
           fontSize="5"
+          fontWeight="bold"
+          textAnchor="middle"
+        >
+          {num}
+        </text>
+      ))}
+
+      {/* Column numbers - Bottom */}
+      {Array.from({ length: COLS }, (_, col) => col + 1).map((num) => (
+        <text
+          key={`col-num-bottom-${num}`}
+          x={startX + (num - 1) * holeSpacing}
+          y={166}
+          fill="#6b7280"
+          fontSize="5"
+          fontWeight="bold"
           textAnchor="middle"
         >
           {num}

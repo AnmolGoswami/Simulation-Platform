@@ -51,6 +51,45 @@ class UnionFind {
 }
 
 /**
+ * Calculates the absolute position of a node's pin in the workspace canvas,
+ * taking into account node rotation about its center and wrapper padding.
+ */
+function getRotatedPinPos(
+  node: WorkspaceNode,
+  pin: { x: number; y: number },
+  width: number,
+  height: number
+): { x: number; y: number } {
+  const rotation = Number(node.properties.rotation || 0)
+  
+  // Account for the padding wrapper offset of 4px in SimulatorNode
+  const isBreadboard = node.type === 'breadboard'
+  const offset = isBreadboard ? 0 : 4
+  
+  const px = pin.x + offset
+  const py = pin.y + offset
+  
+  const cx = (width + offset * 2) / 2
+  const cy = (height + offset * 2) / 2
+  
+  if (rotation === 0) {
+    return { x: node.position.x + px, y: node.position.y + py }
+  }
+  
+  const rad = (rotation * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  
+  const dx = px - cx
+  const dy = py - cy
+  
+  const rx = cx + (dx * cos - dy * sin)
+  const ry = cy + (dx * sin + dy * cos)
+  
+  return { x: node.position.x + rx, y: node.position.y + ry }
+}
+
+/**
  * Builds the connectivity netlist for the workspace components and edges.
  * Groups pins into solver junctions and validation nets.
  */
@@ -83,6 +122,54 @@ export function buildNetlist(
     netUF.find(p1)
     netUF.find(p2)
   })
+
+  // 1.5. Auto-connect overlapping pins (e.g. components placed on breadboard)
+  const breadboards = nodes.filter((n) => n.type === 'breadboard')
+  if (breadboards.length > 0) {
+    const bbPinsWithAbs: { pinKey: string; x: number; y: number }[] = []
+    
+    breadboards.forEach((bb) => {
+      const bbDef = getComponentDefinition(bb.type)
+      if (!bbDef) return
+      
+      const w = bbDef.defaultWidth ?? 400
+      const h = bbDef.defaultHeight ?? 200
+      
+      bbDef.pins.forEach((pin) => {
+        const absPos = getRotatedPinPos(bb, pin, w, h)
+        bbPinsWithAbs.push({
+          pinKey: `${bb.id}:${pin.id}`,
+          x: absPos.x,
+          y: absPos.y,
+        })
+      })
+    })
+
+    nodes.forEach((node) => {
+      if (node.type === 'breadboard') return
+      const def = getComponentDefinition(node.type)
+      if (!def) return
+      
+      const w = def.defaultWidth ?? 60
+      const h = def.defaultHeight ?? 60
+      
+      def.pins.forEach((pin) => {
+        const pinKey = `${node.id}:${pin.id}`
+        const absPos = getRotatedPinPos(node, pin, w, h)
+        
+        // Find if this pin overlaps with any breadboard pin
+        const threshold = 8.0 // tolerance radius in pixels
+        const overlappingBB = bbPinsWithAbs.find((bbPin) => {
+          return Math.hypot(absPos.x - bbPin.x, absPos.y - bbPin.y) < threshold
+        })
+        
+        if (overlappingBB) {
+          junctionUF.union(pinKey, overlappingBB.pinKey)
+          netUF.union(pinKey, overlappingBB.pinKey)
+        }
+      })
+    })
+  }
 
   // 2. Add Breadboard, Terminal Strip, and other ideal internal contacts (Junctions and Nets)
   nodes.forEach((node) => {
