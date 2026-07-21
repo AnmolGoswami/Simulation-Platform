@@ -23,6 +23,10 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
   ]
 
   classPatterns.forEach((cls) => {
+    // Pointer declarations: e.g. OneWire* ds; -> let ds;
+    const ptrRegex = new RegExp(`\\b${cls}\\s*\\*\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\b`, 'g')
+    cleanCode = cleanCode.replace(ptrRegex, 'let $1')
+
     const regex = new RegExp(`\\b${cls}\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(([^)]*)\\)\\s*;`, 'g')
     cleanCode = cleanCode.replace(regex, (_, name, args) => {
       // Strip address-of operator '&' from args for JS compatibility
@@ -70,20 +74,36 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
   // this is safe for bitwise AND (&) and logical AND (&&) as it checks bounds.
   cleanCode = cleanCode.replace(/(?<!\w)(?<!&)&(?!&)\s*([a-zA-Z_][a-zA-Z0-9_]*)\b/g, '$1')
 
-  // Step 4: Replace primitive types in variable declarations
-  // e.g. const int led = 13; -> const led = 13;
-  // e.g. int val = 0; -> let val = 0;
   const types = [
     'unsigned char', 'unsigned short', 'unsigned int', 'unsigned long', 'unsigned byte', 'unsigned',
     'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t', 'int16_t', 'int32_t', 'int64_t', 'size_t',
     'int', 'float', 'double', 'long', 'short', 'char', 'bool', 'boolean', 'byte', 'String'
   ].sort((a, b) => b.length - a.length)
-  
+
+  // Step 3.7: Strip C++ style type casts (e.g. (int)val -> val, (OneWire*)ds -> ds)
+  const castTypes = [...types, ...classPatterns]
+  castTypes.forEach((type) => {
+    const typeRegexStr = type.replace(/\s+/g, '\\s+')
+    const castRegex = new RegExp(`\\(\\s*${typeRegexStr}\\s*\\*?\\s*\\)`, 'g')
+    cleanCode = cleanCode.replace(castRegex, '')
+  })
+
+  // Step 4: Replace primitive types in variable declarations
+  // e.g. const int led = 13; -> const led = 13;
+  // e.g. int val = 0; -> let val = 0;
   types.forEach((type) => {
     const typeRegexStr = type.replace(/\s+/g, '\\s+')
     // Const declarations
     const constRegex = new RegExp(`\\bconst\\s+${typeRegexStr}\\b`, 'g')
     cleanCode = cleanCode.replace(constRegex, 'const')
+
+    // Const pointer declarations: e.g. const int* p -> const p
+    const constPtrRegex = new RegExp(`\\bconst\\s+${typeRegexStr}\\s*\\*\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\b`, 'g')
+    cleanCode = cleanCode.replace(constPtrRegex, 'const $1')
+
+    // Regular pointer declarations: e.g. int* p -> let p
+    const ptrRegex = new RegExp(`\\b${typeRegexStr}\\s*\\*\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\b`, 'g')
+    cleanCode = cleanCode.replace(ptrRegex, 'let $1')
 
     // Regular declarations — only match type declarations when followed by a variable identifier
     const varRegex = new RegExp(`\\b${typeRegexStr}\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b`, 'g')
