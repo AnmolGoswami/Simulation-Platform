@@ -159,6 +159,7 @@ export function useSimulationRunner() {
       lastTickTimeRef.current = performance.now()
       let totalLoops = 0
       let loopTimeSum = 0
+      let lastFrameYieldTime = performance.now()
 
       // Core Loop Runner
       while (activeLoopRef.current) {
@@ -373,17 +374,19 @@ export function useSimulationRunner() {
         }
 
         // Yield execution to browser render thread to prevent UI freezing.
-        // Batch several loop iterations per macrotask under "unlimited"
-        // speed rather than yielding every single iteration, since nested
-        // setTimeout is clamped to a ~4ms floor by the browser.
+        // Under "unlimited" speed, yield if we have spent more than 16ms
+        // executing code synchronously (ensures smooth 60fps rendering).
+        const frameTime = performance.now() - lastFrameYieldTime
         if (speedRatio === Infinity) {
-          if (totalLoops % 20 === 0) {
+          if (frameTime > 16) {
             await new Promise((resolve) => setTimeout(resolve, 0))
+            lastFrameYieldTime = performance.now()
           }
         } else {
           const targetLoopInterval = 15 / speedRatio // 15ms target loop pacing
           const waitTime = Math.max(1, targetLoopInterval - loopDur)
           await new Promise((resolve) => setTimeout(resolve, waitTime))
+          lastFrameYieldTime = performance.now()
         }
       }
       
