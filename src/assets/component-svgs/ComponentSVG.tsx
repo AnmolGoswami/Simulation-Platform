@@ -749,47 +749,171 @@ export function ComponentSVG({
       case 'push-button':
         return (
           <g>
-            <rect x="2" y="2" width="36" height="36" rx="4" fill="#2f3542" stroke={stroke} strokeWidth={strokeWidth} />
-            <circle cx="18" cy="18" r="10" fill="#ef4444" stroke="#a3222b" strokeWidth="1.5" />
+            <defs>
+              <linearGradient id="tact-body" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#374151" />
+                <stop offset="100%" stopColor="#111827" />
+              </linearGradient>
+              <linearGradient id="metal-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#f3f4f6" />
+                <stop offset="40%" stopColor="#d1d5db" />
+                <stop offset="100%" stopColor="#9ca3af" />
+              </linearGradient>
+              <radialGradient id="button-plunger" cx="35%" cy="35%" r="65%">
+                <stop offset="0%" stopColor="#ef4444" />
+                <stop offset="70%" stopColor="#dc2626" />
+                <stop offset="100%" stopColor="#7f1d1d" />
+              </radialGradient>
+            </defs>
+            {/* Tactile Switch body */}
+            <rect x="4" y="4" width="32" height="32" rx="4" fill="url(#tact-body)" stroke={stroke} strokeWidth={strokeWidth} />
+            
+            {/* Metal cover plate */}
+            <rect x="7" y="7" width="26" height="26" rx="3" fill="url(#metal-grad)" stroke="#9ca3af" strokeWidth="0.5" />
+            
+            {/* Corner rivets */}
+            <circle cx="9.5" cy="9.5" r="1" fill="#4b5563" />
+            <circle cx="30.5" cy="9.5" r="1" fill="#4b5563" />
+            <circle cx="9.5" cy="30.5" r="1" fill="#4b5563" />
+            <circle cx="30.5" cy="30.5" r="1" fill="#4b5563" />
+
+            {/* Plunger bezel and button */}
+            <circle cx="20" cy="20" r="8" fill="#1f2937" stroke="#4b5563" strokeWidth="0.5" />
+            <circle cx="20" cy="20" r="5.5" fill="url(#button-plunger)" />
           </g>
         )
 
       case 'potentiometer':
-        return (
-          <g>
-            <defs>
-              <radialGradient id="pot-body" cx="35%" cy="35%" r="75%">
-                <stop offset="0%" stopColor="#4b5563" />
-                <stop offset="100%" stopColor="#293241" />
-              </radialGradient>
-            </defs>
-            <circle cx="25" cy="25" r="20" fill="url(#pot-body)" stroke={stroke} strokeWidth={strokeWidth} />
-            <circle cx="25" cy="25" r="6" fill="#181c24" />
-            <line x1="25" y1="25" x2="25" y2="10" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" />
-          </g>
-        )
+        {
+          const resistance = Number(properties?.resistance ?? 10000)
+          const angle = (resistance / 10000) * 280 - 140
+
+          return (
+            <g>
+              <defs>
+                <linearGradient id="pot-blue-body" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#2563eb" />
+                  <stop offset="100%" stopColor="#1e3a8a" />
+                </linearGradient>
+                <linearGradient id="pot-metal-grad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#f3f4f6" />
+                  <stop offset="100%" stopColor="#9ca3af" />
+                </linearGradient>
+              </defs>
+              {/* Outer Blue casing */}
+              <circle cx="25" cy="25" r="20" fill="url(#pot-blue-body)" stroke={stroke} strokeWidth={strokeWidth} />
+              <circle cx="25" cy="25" r="18" fill="none" stroke="#1d4ed8" strokeWidth="1" />
+              
+              {/* Metal collar */}
+              <circle cx="25" cy="25" r="8" fill="url(#pot-metal-grad)" stroke="#6b7280" strokeWidth="0.5" />
+              <circle cx="25" cy="25" r="6" fill="#4b5563" />
+              
+              {/* Rotating shaft with indicator */}
+              <g transform={`rotate(${angle}, 25, 25)`}>
+                <circle cx="25" cy="25" r="4.5" fill="#1f2937" />
+                <line x1="25" y1="25" x2="25" y2="17" stroke="#fbbf24" strokeWidth="1.8" strokeLinecap="round" />
+              </g>
+            </g>
+          )
+        }
 
       case 'resistor':
-        return (
-          <g>
-            <line x1="0" y1="10" x2="8" y2="10" stroke="#a3a9b5" strokeWidth="2" strokeLinecap="round" />
-            <rect x="8" y="4" width="44" height="12" rx="3" fill="#d9ae7e" />
-            <rect x="16" y="4" width="4" height="12" fill="#78350f" />
-            <rect x="24" y="4" width="4" height="12" fill="#78350f" />
-            <rect x="32" y="4" width="4" height="12" fill="#b91c1c" />
-            <rect x="40" y="4" width="4" height="12" fill="#f59e0b" />
-            <line x1="52" y1="10" x2="60" y2="10" stroke="#a3a9b5" strokeWidth="2" strokeLinecap="round" />
-          </g>
-        )
+        {
+          const resistance = Number(properties?.resistance ?? 1000)
+          const colors = [
+            '#000000', // Black
+            '#78350f', // Brown
+            '#dc2626', // Red
+            '#ea580c', // Orange
+            '#eab308', // Yellow
+            '#16a34a', // Green
+            '#2563eb', // Blue
+            '#7c3aed', // Violet
+            '#4b5563', // Gray
+            '#f9fafb', // White
+          ]
+
+          // Determine standard 4-band resistor colors
+          let b1 = colors[1] // default brown (1)
+          let b2 = colors[0] // default black (0)
+          let b3 = colors[2] // default red (x100)
+          const b4 = '#d4af37' // Gold (5%)
+
+          if (resistance > 0) {
+            const exp = Math.floor(Math.log10(resistance))
+            const firstVal = Math.floor(resistance / Math.pow(10, exp))
+            const secondVal = Math.floor((resistance / Math.pow(10, exp - 1)) % 10)
+            let mult = exp - 1
+            if (mult < 0) mult = 0
+
+            b1 = colors[Math.min(9, Math.max(0, firstVal))]
+            b2 = colors[Math.min(9, Math.max(0, secondVal))]
+            b3 = colors[Math.min(9, Math.max(0, mult))]
+          }
+
+          return (
+            <g>
+              <defs>
+                <linearGradient id="res-lead-metal" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#e5e7eb" />
+                  <stop offset="50%" stopColor="#9ca3af" />
+                  <stop offset="100%" stopColor="#4b5563" />
+                </linearGradient>
+                <linearGradient id="res-body-grad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#fef3c7" />
+                  <stop offset="35%" stopColor="#f59e0b" />
+                  <stop offset="70%" stopColor="#d97706" />
+                  <stop offset="100%" stopColor="#78350f" />
+                </linearGradient>
+              </defs>
+              {/* Metallic leads */}
+              <line x1="0" y1="10" x2="16" y2="10" stroke="url(#res-lead-metal)" strokeWidth="1.5" />
+              <line x1="44" y1="10" x2="60" y2="10" stroke="url(#res-lead-metal)" strokeWidth="1.5" />
+
+              {/* Realistic Resistor Body (Dumbbell path shape) */}
+              <path
+                d="M 16 6 C 14 6, 12 4.5, 10 4.5 C 7.5 4.5, 7.5 15.5, 10 15.5 C 12 15.5, 14 14, 16 14 L 44 14 C 46 14, 48 15.5, 50 15.5 C 52.5 15.5, 52.5 4.5, 50 4.5 C 48 4.5, 46 6, 44 6 Z"
+                fill="url(#res-body-grad)"
+                stroke={stroke}
+                strokeWidth={strokeWidth}
+              />
+
+              {/* Color Bands */}
+              <rect x="18" y="4.5" width="3" height="11" fill={b1} />
+              <rect x="25" y="6" width="3" height="8" fill={b2} />
+              <rect x="32" y="6" width="3" height="8" fill={b3} />
+              <rect x="40" y="4.5" width="3" height="11" fill={b4} />
+            </g>
+          )
+        }
 
       case 'diode-1n4007':
       case 'schottky-diode':
         return (
           <g>
-            <line x1="0" y1="10" x2="18" y2="10" stroke="#a3a9b5" strokeWidth="2" strokeLinecap="round" />
-            <polygon points="18,4 18,16 30,10" fill="#181c24" />
-            <line x1="30" y1="4" x2="30" y2="16" stroke="#d6dbe3" strokeWidth="2" />
-            <line x1="30" y1="10" x2="50" y2="10" stroke="#a3a9b5" strokeWidth="2" strokeLinecap="round" />
+            <defs>
+              <linearGradient id="dio-lead-metal" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#e5e7eb" />
+                <stop offset="100%" stopColor="#6b7280" />
+              </linearGradient>
+              <linearGradient id="dio-body-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#4b5563" />
+                <stop offset="35%" stopColor="#1f2937" />
+                <stop offset="100%" stopColor="#111827" />
+              </linearGradient>
+            </defs>
+            {/* Leads */}
+            <line x1="0" y1="10" x2="15" y2="10" stroke="url(#dio-lead-metal)" strokeWidth="1.6" />
+            <line x1="35" y1="10" x2="50" y2="10" stroke="url(#dio-lead-metal)" strokeWidth="1.6" />
+            
+            {/* DO-41 Diode Cylinder Body */}
+            <rect x="15" y="5" width="20" height="10" rx="1.5" fill="url(#dio-body-grad)" stroke={stroke} strokeWidth={strokeWidth} />
+            
+            {/* Silver Cathode Band */}
+            <rect x="29" y="5" width="3.5" height="10" fill="#d1d5db" />
+            
+            {/* 1N4007 Label */}
+            <text x="23" y="11" textAnchor="middle" fill="#9ca3af" fontSize="4.2" fontWeight="bold" fontFamily="monospace">1N4007</text>
           </g>
         )
 
@@ -797,10 +921,27 @@ export function ComponentSVG({
       case 'p-mosfet':
         return (
           <g>
-            <rect x="10" y="4" width="30" height="40" rx="2" fill="#181c24" stroke={stroke} strokeWidth={strokeWidth} />
-            <rect x="15" y="8" width="20" height="6" fill="#4b5563" />
-            <text x="25" y="30" textAnchor="middle" fill="#e2e8f0" fontSize="10" fontWeight="700" fontFamily="ui-monospace, monospace">
-              {type === 'n-mosfet' ? 'N-FET' : 'P-FET'}
+            <defs>
+              <linearGradient id="tab-metal" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#e5e7eb" />
+                <stop offset="50%" stopColor="#9ca3af" />
+                <stop offset="100%" stopColor="#4b5563" />
+              </linearGradient>
+              <linearGradient id="fet-body-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#374151" />
+                <stop offset="100%" stopColor="#111827" />
+              </linearGradient>
+            </defs>
+            {/* Solder tab (TO-220) */}
+            <rect x="8" y="2" width="24" height="15" rx="1.5" fill="url(#tab-metal)" stroke="#6b7280" strokeWidth="0.5" />
+            <circle cx="20" cy="9.5" r="4.5" fill="#374151" stroke="#4b5563" strokeWidth="0.5" />
+
+            {/* Black Plastic Body */}
+            <rect x="6" y="15" width="28" height="25" rx="1" fill="url(#fet-body-grad)" stroke={stroke} strokeWidth={strokeWidth} />
+            
+            {/* Part label */}
+            <text x="20" y="30" textAnchor="middle" fill="#d1d5db" fontSize="5" fontWeight="bold" fontFamily="monospace">
+              {type === 'n-mosfet' ? 'IRF540N' : 'IRF9540'}
             </text>
           </g>
         )
@@ -810,24 +951,45 @@ export function ComponentSVG({
           <g>
             <defs>
               <linearGradient id="relay-body" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#1e4bab" />
-                <stop offset="100%" stopColor="#132f7a" />
+                <stop offset="0%" stopColor="#2563eb" />
+                <stop offset="100%" stopColor="#1e3b8a" />
               </linearGradient>
             </defs>
+            {/* Blue Relay plastic box */}
             <rect x="4" y="4" width="52" height="72" rx="4" fill="url(#relay-body)" stroke={stroke} strokeWidth={strokeWidth} />
-            <rect x="10" y="10" width="40" height="24" rx="2" fill="#181c24" />
-            <text x="30" y="24" textAnchor="middle" fill="#60a5fa" fontSize="8" fontWeight="700" fontFamily="ui-monospace, monospace">5V RELAY</text>
-            <circle cx="30" cy="50" r="10" fill="#181c24" />
+            {/* Recessed top print box */}
+            <rect x="8" y="8" width="44" height="64" rx="2" fill="none" stroke="#3b82f6" strokeWidth="0.5" opacity="0.4" />
+            
+            <text x="30" y="22" textAnchor="middle" fill="#ffffff" fontSize="7" fontWeight="bold" fontFamily="sans-serif">5V RELAY</text>
+            <text x="30" y="32" textAnchor="middle" fill="#93c5fd" fontSize="5" fontFamily="monospace">SRD-05VDC</text>
+            <text x="30" y="44" textAnchor="middle" fill="#93c5fd" fontSize="4.5" fontFamily="monospace">10A 250VAC</text>
+            <text x="30" y="52" textAnchor="middle" fill="#93c5fd" fontSize="4.5" fontFamily="monospace">10A 30VDC</text>
+            
+            {/* Schematic logo */}
+            <path d="M 18 62 L 23 62 L 25 58 L 29 66 L 31 58 L 35 66 L 37 62 L 42 62" fill="none" stroke="#93c5fd" strokeWidth="0.8" />
           </g>
         )
 
       case 'fuse':
         return (
           <g>
-            <line x1="0" y1="10" x2="10" y2="10" stroke="#a3a9b5" strokeWidth="2" strokeLinecap="round" />
-            <rect x="10" y="5" width="30" height="10" rx="2" fill="#fef3c7" stroke="#f59e0b" strokeWidth="1" />
-            <line x1="12" y1="10" x2="38" y2="10" stroke="#b45309" strokeWidth="1" />
-            <line x1="40" y1="10" x2="50" y2="10" stroke="#a3a9b5" strokeWidth="2" strokeLinecap="round" />
+            <defs>
+              <linearGradient id="fuse-cap-metal" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#f3f4f6" />
+                <stop offset="100%" stopColor="#9ca3af" />
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="10" x2="10" y2="10" stroke="url(#fuse-cap-metal)" strokeWidth="1.8" />
+            <line x1="40" y1="10" x2="50" y2="10" stroke="url(#fuse-cap-metal)" strokeWidth="1.8" />
+            
+            {/* Glass body */}
+            <rect x="14" y="5" width="22" height="10" rx="1" fill="#fef3c7" fillOpacity="0.25" stroke="#fbbf24" strokeWidth="0.8" />
+            {/* Internal fuse wire */}
+            <line x1="14" y1="10" x2="36" y2="10" stroke="#b45309" strokeWidth="0.8" />
+            
+            {/* Metal Caps */}
+            <rect x="10" y="5" width="4" height="10" fill="url(#fuse-cap-metal)" stroke="#6b7280" strokeWidth="0.5" />
+            <rect x="36" y="5" width="4" height="10" fill="url(#fuse-cap-metal)" stroke="#6b7280" strokeWidth="0.5" />
           </g>
         )
 
@@ -835,10 +997,26 @@ export function ComponentSVG({
       case 'ceramic-capacitor':
         return (
           <g>
-            <line x1="0" y1="10" x2="12" y2="10" stroke="#a3a9b5" strokeWidth="2" strokeLinecap="round" />
-            <line x1="12" y1="4" x2="12" y2="16" stroke="#7d8494" strokeWidth="2" />
-            <line x1="18" y1="4" x2="18" y2="16" stroke="#7d8494" strokeWidth="2" />
-            <line x1="18" y1="10" x2="30" y2="10" stroke="#a3a9b5" strokeWidth="2" strokeLinecap="round" />
+            <defs>
+              <linearGradient id="ceramic-body-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#fbbf24" />
+                <stop offset="100%" stopColor="#d97706" />
+              </linearGradient>
+              <linearGradient id="cap-lead-metal" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#e5e7eb" />
+                <stop offset="100%" stopColor="#6b7280" />
+              </linearGradient>
+            </defs>
+            {/* Leads */}
+            <line x1="10" y1="12" x2="10" y2="25" stroke="url(#cap-lead-metal)" strokeWidth="1.5" />
+            <line x1="30" y1="12" x2="30" y2="25" stroke="url(#cap-lead-metal)" strokeWidth="1.5" />
+
+            {/* Ceramic Disc Body */}
+            <ellipse cx="20" cy="11" rx="12" ry="9" fill="url(#ceramic-body-grad)" stroke={stroke} strokeWidth={strokeWidth} />
+            <ellipse cx="20" cy="11" rx="10.5" ry="7.5" fill="none" stroke="#b45309" strokeWidth="0.5" opacity="0.4" />
+            
+            {/* Markings */}
+            <text x="20" y="14" textAnchor="middle" fill="#451a03" fontSize="6.5" fontWeight="bold" fontFamily="monospace">104</text>
           </g>
         )
 
@@ -846,32 +1024,69 @@ export function ComponentSVG({
         return (
           <g>
             <defs>
-              <linearGradient id="elcap-body" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#1a7fc4" />
-                <stop offset="100%" stopColor="#0c5389" />
+              <linearGradient id="elcap-cyl-body" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#3b82f6" />
+                <stop offset="50%" stopColor="#1d4ed8" />
+                <stop offset="100%" stopColor="#1e3a8a" />
               </linearGradient>
             </defs>
-            <rect x="8" y="4" width="14" height="42" rx="2" fill="url(#elcap-body)" stroke={stroke} strokeWidth={strokeWidth} />
-            <line x1="8" y1="15" x2="4" y2="15" stroke="#a3a9b5" strokeWidth="2" />
-            <line x1="22" y1="15" x2="26" y2="15" stroke="#a3a9b5" strokeWidth="2" />
-            <text x="15" y="28" textAnchor="middle" fill="#fff" fontSize="6">+</text>
+            {/* Rubber base end */}
+            <rect x="7" y="38" width="16" height="4" rx="0.5" fill="#4b5563" />
+            {/* Solder pins */}
+            <line x1="11" y1="42" x2="11" y2="52" stroke="#9ca3af" strokeWidth="1.5" />
+            <line x1="19" y1="42" x2="19" y2="52" stroke="#9ca3af" strokeWidth="1.5" />
+
+            {/* Cylinder Body */}
+            <rect x="6" y="4" width="18" height="34" rx="2" fill="url(#elcap-cyl-body)" stroke={stroke} strokeWidth={strokeWidth} />
+            
+            {/* Negative stripe */}
+            <rect x="6" y="4" width="5" height="34" fill="#94a3b8" />
+            <text x="8.5" y="16" textAnchor="middle" fill="#1e293b" fontSize="7" fontWeight="bold">-</text>
+            <text x="8.5" y="28" textAnchor="middle" fill="#1e293b" fontSize="7" fontWeight="bold">-</text>
+            
+            {/* Value print */}
+            <text x="16.5" y="22" textAnchor="middle" fill="#ffffff" fontSize="5.5" fontWeight="bold" fontFamily="monospace" transform="rotate(90, 16.5, 22)">10µF</text>
           </g>
         )
 
       case 'super-capacitor':
         return (
           <g>
-            <rect x="6" y="6" width="18" height="38" rx="2" fill="#6d28d9" stroke={stroke} strokeWidth={strokeWidth} />
-            <rect x="26" y="6" width="18" height="38" rx="2" fill="#4c1d95" stroke={stroke} strokeWidth={strokeWidth} />
+            <defs>
+              <linearGradient id="supercap-grad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#8b5cf6" />
+                <stop offset="50%" stopColor="#6d28d9" />
+                <stop offset="100%" stopColor="#4c1d95" />
+              </linearGradient>
+            </defs>
+            <rect x="6" y="6" width="18" height="38" rx="3" fill="url(#supercap-grad)" stroke={stroke} strokeWidth={strokeWidth} />
+            <rect x="26" y="6" width="18" height="38" rx="3" fill="url(#supercap-grad)" stroke={stroke} strokeWidth={strokeWidth} />
+            <text x="15" y="25" textAnchor="middle" fill="#c084fc" fontSize="5" fontWeight="bold" fontFamily="monospace" transform="rotate(90, 15, 25)">CAP</text>
+            <text x="35" y="25" textAnchor="middle" fill="#c084fc" fontSize="5" fontWeight="bold" fontFamily="monospace" transform="rotate(90, 35, 25)">CAP</text>
           </g>
         )
 
       case 'terminal-block':
         return (
           <g>
-            <rect x="4" y="4" width="32" height="42" rx="2" fill="#14803e" stroke={stroke} strokeWidth={strokeWidth} />
-            <circle cx="12" cy="18" r="5" fill="#181c24" stroke="#d6dbe3" />
-            <circle cx="28" cy="18" r="5" fill="#181c24" stroke="#d6dbe3" />
+            <defs>
+              <linearGradient id="term-body" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#22c55e" />
+                <stop offset="100%" stopColor="#14532d" />
+              </linearGradient>
+            </defs>
+            {/* Green block housing */}
+            <rect x="4" y="4" width="32" height="42" rx="3" fill="url(#term-body)" stroke={stroke} strokeWidth={strokeWidth} />
+            {/* Entry wire slots */}
+            <rect x="8" y="32" width="8" height="10" fill="#1f2937" rx="0.5" />
+            <rect x="24" y="32" width="8" height="10" fill="#1f2937" rx="0.5" />
+
+            {/* Brass screw cages */}
+            <circle cx="12" cy="18" r="5" fill="#f59e0b" stroke="#78350f" strokeWidth="0.8" />
+            <line x1="9" y1="18" x2="15" y2="18" stroke="#451a03" strokeWidth="1.2" />
+            
+            <circle cx="28" cy="18" r="5" fill="#f59e0b" stroke="#78350f" strokeWidth="0.8" />
+            <line x1="25" y1="18" x2="31" y2="18" stroke="#451a03" strokeWidth="1.2" />
           </g>
         )
 
@@ -885,10 +1100,39 @@ export function ComponentSVG({
         )
 
       case 'ds18b20':
+      case 'lm35':
         return (
           <g>
-            <rect x="14" y="4" width="12" height="32" rx="6" fill="#181c24" stroke={stroke} strokeWidth={strokeWidth} />
-            <text x="20" y="26" textAnchor="middle" fill="#525a68" fontSize="5">DS</text>
+            <defs>
+              <linearGradient id="to92-lead-metal" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#e5e7eb" />
+                <stop offset="100%" stopColor="#9ca3af" />
+              </linearGradient>
+              <linearGradient id="to92-body-grad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#374151" />
+                <stop offset="70%" stopColor="#1f2937" />
+                <stop offset="100%" stopColor="#111827" />
+              </linearGradient>
+            </defs>
+            {/* Pins extending down */}
+            <line x1="8" y1="10" x2="8" y2="40" stroke="url(#to92-lead-metal)" strokeWidth="1.5" />
+            <line x1="20" y1="12" x2="20" y2="48" stroke="url(#to92-lead-metal)" strokeWidth="1.5" />
+            <line x1="32" y1="10" x2="32" y2="40" stroke="url(#to92-lead-metal)" strokeWidth="1.5" />
+
+            {/* TO-92 flat-front plastic body */}
+            <path
+              d="M 6 6 H 34 V 20 C 34 26, 27 30, 20 30 C 13 30, 6 26, 6 20 Z"
+              fill="url(#to92-body-grad)"
+              stroke={stroke}
+              strokeWidth={strokeWidth}
+            />
+            {/* Beveled edge detail */}
+            <line x1="7" y1="7" x2="7" y2="19" stroke="#4b5563" strokeWidth="0.5" />
+            
+            {/* Part Label */}
+            <text x="20" y="16" textAnchor="middle" fill="#9ca3af" fontSize="4.8" fontWeight="bold" fontFamily="monospace">
+              {type.toUpperCase()}
+            </text>
           </g>
         )
 
