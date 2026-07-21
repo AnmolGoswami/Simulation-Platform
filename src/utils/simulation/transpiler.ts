@@ -14,6 +14,33 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
 
   const customFunctions: string[] = []
 
+  // Step 1.8: Parse C++ enum declarations and collect custom enum types
+  // e.g. enum ScreenMode { MODE_A, MODE_B }; -> const MODE_A = 0; const MODE_B = 1;
+  const enumRegex = /\benum\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\{([^}]+)\}\s*;/g
+  let enumMatch
+  const enumTypes: string[] = []
+  
+  let enumCleanedCode = cleanCode
+  while ((enumMatch = enumRegex.exec(cleanCode)) !== null) {
+    const [fullMatch, enumName, body] = enumMatch
+    enumTypes.push(enumName)
+    
+    let index = 0
+    const consts = body.split(',').map((valStr) => {
+      const parts = valStr.trim().split('=')
+      const name = parts[0].trim()
+      if (parts[1]) {
+        index = parseInt(parts[1].trim(), 10)
+      }
+      const decl = `const ${name} = ${index};`
+      index++
+      return decl
+    })
+    
+    enumCleanedCode = enumCleanedCode.replace(fullMatch, consts.join(' '))
+  }
+  cleanCode = enumCleanedCode
+
   // Step 2: Extract and replace class instantiations
   // e.g. LiquidCrystal_I2C lcd(0x27, 16, 2); -> let lcd = new LiquidCrystal_I2C(0x27, 16, 2);
   // e.g. DallasTemperature sensors(&oneWire); -> let sensors = new DallasTemperature(oneWire);
@@ -79,6 +106,7 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
   cleanCode = cleanCode.replace(/(?<!\w)(?<!&)&(?!&)\s*([a-zA-Z_][a-zA-Z0-9_]*)\b/g, '$1')
 
   const types = [
+    ...enumTypes,
     'unsigned char', 'unsigned short', 'unsigned int', 'unsigned long', 'unsigned byte', 'unsigned',
     'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t', 'int16_t', 'int32_t', 'int64_t', 'size_t',
     'int', 'float', 'double', 'long', 'short', 'char', 'bool', 'boolean', 'byte', 'String'
