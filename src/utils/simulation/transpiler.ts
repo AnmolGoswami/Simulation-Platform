@@ -8,6 +8,10 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
     .replace(/\/\*[\s\S]*?\*\//g, '') // Strip block comments
     .replace(/\/\/.*/g, '')           // Strip line comments
 
+  // Step 1.2: Strip C++ storage specifiers and attributes that are not compatible with JS
+  // e.g. volatile, static, inline, register, extern, and ESP32 interrupts IRAM_ATTR
+  cleanCode = cleanCode.replace(/\b(volatile|static|register|extern|inline|IRAM_ATTR|DRAM_ATTR|RTC_DATA_ATTR)\b/g, '')
+
   const customFunctions: string[] = []
 
   // Step 2: Extract and replace class instantiations
@@ -124,6 +128,12 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
     '$1 $2 = [$3];'
   )
 
+  // Step 5.5: Replace C++ uninitialized array declarations (e.g. let temp[3]; -> let temp = [];)
+  cleanCode = cleanCode.replace(
+    /\b(let|const)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*\d*\s*\]\s*;/g,
+    '$1 $2 = [];'
+  )
+
   // Step 6: Inject await for delay calls
   // delay(1000); -> await delay(1000);
   cleanCode = cleanCode.replace(/\bdelay\(([^)]+)\)\s*;/g, 'await delay($1);')
@@ -143,6 +153,9 @@ export function transpileArduinoToJS(code: string): { jsCode: string; customFunc
   // Step 9: Replace #define constants
   // e.g. #define LED_PIN 13 -> const LED_PIN = 13;
   cleanCode = cleanCode.replace(/#define\s+([a-zA-Z0-9_]+)\s+([^\n\r]+)/g, 'const $1 = $2;')
+
+  // Step 9.5: Strip F() flash memory macros (e.g. F("hello") -> "hello")
+  cleanCode = cleanCode.replace(/\bF\(([^)]+)\)/g, '$1')
 
   // Step 10: Map digital state and mode constants if not already declared
   // Make sure setup and loop are returned as properties of the execution

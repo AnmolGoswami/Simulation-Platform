@@ -9,6 +9,7 @@ export const LOW = 0
 export const INPUT = 0
 export const OUTPUT = 1
 export const INPUT_PULLUP = 2
+export const INPUT_PULLDOWN = 3
 
 /**
  * Resolves whatever pin identifier a user sketch passes (e.g. digitalWrite(13, HIGH)
@@ -106,6 +107,69 @@ export function createSimulationContext(
     }
   }
 
+  const ledcChannels: Record<number, string | number> = {}
+
+  const analogReadImpl = (pin: number | string) => {
+    const pinStr = resolvePin(pin).toLowerCase()
+    const startPin = `${nodeId}:${pinStr}`
+    const visited = new Set<string>()
+    const queue = [startPin]
+    let sensorNode: WorkspaceNode | null = null
+
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      if (visited.has(current)) continue
+      visited.add(current)
+
+      const [currNodeId] = current.split(':')
+      const node = store.nodes.find(n => n.id === currNodeId)
+      if (node && (node.type === 'lm35' || node.type === 'potentiometer' || node.type === 'battery-12v')) {
+        sensorNode = node
+        break
+      }
+
+      store.edges.forEach((edge) => {
+        const pA = `${edge.sourceNodeId}:${edge.sourcePinId}`
+        const pB = `${edge.targetNodeId}:${edge.targetPinId}`
+        if (pA === current) queue.push(pB)
+        if (pB === current) queue.push(pA)
+      })
+    }
+
+    if (sensorNode) {
+      const activeFaults = store.activeFaults || {}
+      if (sensorNode.type === 'lm35') {
+        if (activeFaults['lm35-disconnect']) {
+          return 0
+        }
+        let temp = Number(sensorNode.properties.temperature || 25)
+        if (activeFaults['lm35-freeze']) {
+          temp = 80
+        }
+        if (activeFaults['lm35-noise']) {
+          temp += (Math.random() - 0.5) * 15
+        }
+        if (activeFaults['lm35-drift']) {
+          const simTime = store.simulationDiagnostics.executionTime / 1000
+          temp += simTime * 0.5
+        }
+
+        const voltage = temp * 0.01
+        return Math.max(0, Math.min(1023, Math.floor((voltage / 5.0) * 1023)))
+      }
+      if (sensorNode.type === 'potentiometer') {
+        const resistance = Number(sensorNode.properties.resistance || 500)
+        return Math.floor((resistance / 10000) * 1023)
+      }
+      if (sensorNode.type === 'battery-12v') {
+        const volt = Number(sensorNode.properties.voltage || 12)
+        return Math.floor((volt / 15.0) * 1023)
+      }
+    }
+
+    return 0
+  }
+
   return {
     _yield: async () => {
       const now = performance.now()
@@ -120,6 +184,11 @@ export function createSimulationContext(
     INPUT,
     OUTPUT,
     INPUT_PULLUP,
+    INPUT_PULLDOWN,
+
+    // ESP32 ADC & Interrupt constants
+    ADC_11db: 3,
+    FALLING: 2,
 
     // OLED Constants
     SSD1306_WHITE: 1,
@@ -153,7 +222,14 @@ export function createSimulationContext(
     // the keys the solver looks up (fixes the digitalWrite -> solver mismatch).
     pinMode: (pin: number | string, mode: number) => {
       const pinStr = resolvePin(pin)
-      const modeStr = mode === INPUT ? 'INPUT' : mode === OUTPUT ? 'OUTPUT' : 'INPUT_PULLUP'
+      const modeStr =
+        mode === INPUT
+          ? 'INPUT'
+          : mode === OUTPUT
+          ? 'OUTPUT'
+          : mode === INPUT_PULLUP
+          ? 'INPUT_PULLUP'
+          : 'INPUT_PULLDOWN'
       setPinState(pinStr, modeStr)
     },
     digitalWrite: (pin: number | string, val: number) => {
@@ -171,69 +247,70 @@ export function createSimulationContext(
       // PWM value is 0-255. Convert to fraction/number representation
       setPinState(resolvePin(pin), val)
     },
-    analogRead: (pin: number | string) => {
-      // Find what sensor is connected to this analog pin, and return its value mapped to 0-1023
-      const pinStr = resolvePin(pin).toLowerCase()
-      // Let's resolve the net connected to this pin
-      const startPin = `${nodeId}:${pinStr}`
-      const visited = new Set<string>()
-      const queue = [startPin]
-      let sensorNode: WorkspaceNode | null = null
-
-      while (queue.length > 0) {
-        const current = queue.shift()!
-        if (visited.has(current)) continue
-        visited.add(current)
-
-        const [currNodeId] = current.split(':')
-        const node = store.nodes.find(n => n.id === currNodeId)
-        if (node && (node.type === 'lm35' || node.type === 'potentiometer' || node.type === 'battery-12v')) {
-          sensorNode = node
-          break
-        }
-
-        // Trace wires
-        store.edges.forEach((edge) => {
-          const pA = `${edge.sourceNodeId}:${edge.sourcePinId}`
-          const pB = `${edge.targetNodeId}:${edge.targetPinId}`
-          if (pA === current) queue.push(pB)
-          if (pB === current) queue.push(pA)
-        })
-      }
-
-      if (sensorNode) {
-        const activeFaults = store.activeFaults || {}
-        if (sensorNode.type === 'lm35') {
-          if (activeFaults['lm35-disconnect']) {
-            return 0
-          }
-          let temp = Number(sensorNode.properties.temperature || 25)
-          if (activeFaults['lm35-freeze']) {
-            temp = 80
-          }
-          if (activeFaults['lm35-noise']) {
-            temp += (Math.random() - 0.5) * 15
-          }
-          if (activeFaults['lm35-drift']) {
-            const simTime = store.simulationDiagnostics.executionTime / 1000
-            temp += simTime * 0.5
-          }
-
-          const voltage = temp * 0.01
-          return Math.max(0, Math.min(1023, Math.floor((voltage / 5.0) * 1023)))
-        }
-        if (sensorNode.type === 'potentiometer') {
-          const resistance = Number(sensorNode.properties.resistance || 500)
-          return Math.floor((resistance / 10000) * 1023)
-        }
-        if (sensorNode.type === 'battery-12v') {
-          const volt = Number(sensorNode.properties.voltage || 12)
-          return Math.floor((volt / 15.0) * 1023)
-        }
-      }
-
-      return 0
+    analogRead: analogReadImpl,
+    analogReadResolution: (_res: number) => {},
+    analogSetAttenuation: (_att: number) => {},
+    analogReadMilliVolts: (pin: number | string) => {
+      // Map 0-1023 to 0-3300mV (ESP32 ADC is 3.3V max)
+      const val = analogReadImpl(pin)
+      return Math.floor((val / 1023.0) * 3300)
     },
+
+    // PWM ledc APIs
+    ledcSetup: (_channel: number, _freq: number, _resolution: number) => {},
+    ledcAttachPin: (pin: number | string, channel: number) => {
+      ledcChannels[channel] = pin
+    },
+    ledcWrite: (channel: number, val: number) => {
+      const pin = ledcChannels[channel]
+      if (pin !== undefined) {
+        const pinStr = resolvePin(pin)
+        setPinState(pinStr, 'OUTPUT')
+        setPinState(pinStr, val)
+      }
+    },
+
+    // Interrupt APIs
+    digitalPinToInterrupt: (pin: any) => pin,
+    attachInterrupt: (_pin: any, callback: () => void, _mode: any) => {
+      // Run the callback periodically in a setInterval to simulate hardware pulses!
+      const interval = setInterval(() => {
+        if (useSimulatorStore.getState().simulationStatus === 'running') {
+          const storeInstance = useSimulatorStore.getState()
+          const cutoff = storeInstance.gpioPinStates[nodeId]?.['d14'] // FAN_CUTOFF_PIN = 14
+          const pwm = storeInstance.gpioPinStates[nodeId]?.['d13']    // FAN_PWM_PIN = 13
+          
+          const isCutoffActive = (cutoff === 'HIGH' || cutoff === 1)
+          const pwmVal = typeof pwm === 'number' ? pwm : (pwm === 'HIGH' ? 255 : 0)
+          
+          if (isCutoffActive && pwmVal > 0) {
+            const pulseProbability = pwmVal / 255
+            if (Math.random() < pulseProbability) {
+              try {
+                callback()
+              } catch (e) {
+                // ignore
+              }
+            }
+          }
+        } else {
+          clearInterval(interval)
+        }
+      }, 50)
+    },
+
+    // String formatting
+    dtostrf: (val: number, width: number, precision: number, buf: any[]) => {
+      const str = val.toFixed(precision)
+      const padded = str.padStart(width)
+      buf.length = 0
+      for (let i = 0; i < padded.length; i++) {
+        buf.push(padded[i])
+      }
+      buf.toString = () => padded
+      buf.join = () => padded
+    },
+
     tone: (pin: number | string, frequency: number) => {
       setPinState(resolvePin(pin), frequency)
     },
