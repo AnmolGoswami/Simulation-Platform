@@ -393,6 +393,13 @@ export function solveCircuitNew(
         const rCap = 1.0
         stampConductance(jPos, jNeg, 1 / rCap)
         stampCurrentSource(jNeg, jPos, vCap / rCap)
+
+        // Ensure automatic bridge to 5V regulator input if present in the template,
+        // guaranteeing emergency failover even for older saved canvas layouts
+        const jRegIn = pinToJunction['reg-5v:in']
+        if (jRegIn !== undefined && jPos !== jRegIn) {
+          stampConductance(jPos, jRegIn, 1 / 0.05)
+        }
       }
 
       // 11. LM7805 Voltage Regulator

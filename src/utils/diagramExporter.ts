@@ -42,6 +42,7 @@ export async function exportDiagramAsImage(
     width: imageWidth,
     height: imageHeight,
     quality: 0.98,
+    skipFonts: true,
     style: {
       width: `${imageWidth}px`,
       height: `${imageHeight}px`,
@@ -70,9 +71,9 @@ export async function exportDiagramAsImage(
     try {
       let fallbackUrl: string
       if (format === 'png') {
-        fallbackUrl = await toPng(viewportDomNode, { backgroundColor: '#0a0e17', quality: 0.95 })
+        fallbackUrl = await toPng(viewportDomNode, { backgroundColor: '#0a0e17', quality: 0.95, skipFonts: true })
       } else {
-        fallbackUrl = await toSvg(viewportDomNode, { backgroundColor: '#0a0e17' })
+        fallbackUrl = await toSvg(viewportDomNode, { backgroundColor: '#0a0e17', skipFonts: true })
       }
       const link = document.createElement('a')
       link.setAttribute('download', filename)

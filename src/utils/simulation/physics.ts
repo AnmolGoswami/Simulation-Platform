@@ -202,6 +202,25 @@ export function updateSimulationPhysics(
       }
     }
 
+    // F2. Supercapacitor discharge under load & terminal sag tracking
+    if (node.type === 'super-capacitor') {
+      const storedV = Number(node.properties.storedVoltage ?? 11.0)
+      const capacitance = Math.max(0.1, Number(node.properties.capacitance ?? 1.0))
+      const current = getComponentCurrent(node.id)
+
+      // When supplying current (> 1mA), slowly discharge the stored capacitor voltage over time
+      let newStoredV = storedV
+      if (current > 0.001) {
+        // dV/dt = -I / C (scaled for visible simulation pacing)
+        newStoredV = Math.max(0.1, storedV - (current / capacitance) * deltaTimeSec * 0.05)
+      }
+
+      // Terminal voltage drops slightly under active load due to internal ESR
+      const terminalV = Math.max(0.1, newStoredV - current * 0.1)
+      nodePropertyUpdates[node.id].storedVoltage = newStoredV
+      nodePropertyUpdates[node.id].voltage = terminalV
+    }
+
     // G. LED brightness — driven by real solved current against a rated
     // forward current, so resistor value now visibly affects brightness
     // (a 220Ω vs 10kΩ series resistor will produce very different current

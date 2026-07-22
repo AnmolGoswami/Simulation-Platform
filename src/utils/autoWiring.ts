@@ -650,8 +650,9 @@ export const FAULT_TOLERANT_EDGES: { sourceNodeId: string; sourcePinId: string; 
   { sourceNodeId: 'diode-backup', sourcePinId: 'cathode', targetNodeId: 'reg-5v', targetPinId: 'in', color: 'red' },
   { sourceNodeId: 'switch-backup', sourcePinId: 'b', targetNodeId: 'esp32-1', targetPinId: 'gpio35', color: 'orange' },
   { sourceNodeId: 'batt-backup', sourcePinId: 'neg', targetNodeId: 'esp32-1', targetPinId: 'gnd3', color: 'black' },
-  // Supercapacitor Bank Charge Sensing (ADC 33) & Ground (Step 6d, 8)
+  // Supercapacitor Bank Charge Sensing (ADC 33), Power Rail Reserve Feed, & Ground (Step 6d, 8)
   { sourceNodeId: 'supercap-bank', sourcePinId: 'pos', targetNodeId: 'esp32-1', targetPinId: 'gpio33', color: 'yellow' },
+  { sourceNodeId: 'supercap-bank', sourcePinId: 'pos', targetNodeId: 'reg-5v', targetPinId: 'in', color: 'red' },
   { sourceNodeId: 'supercap-bank', sourcePinId: 'neg', targetNodeId: 'esp32-1', targetPinId: 'gnd3', color: 'black' },
   // USB Presence Sense (Step 7)
   { sourceNodeId: 'esp32-1', sourcePinId: '3v3', targetNodeId: 'esp32-1', targetPinId: 'gpio32', color: 'red' }
