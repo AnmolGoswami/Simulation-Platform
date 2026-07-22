@@ -18,9 +18,6 @@ import {
   ESP32_LED_BLINK_NODES,
   ESP32_LED_BLINK_EDGES,
   ESP32_LED_BLINK_CODE,
-  FAULT_TOLERANT_NODES,
-  FAULT_TOLERANT_EDGES,
-  FAULT_TOLERANT_AIRCRAFT_CODE,
 } from '@/utils/autoWiring'
 import { cleanupGlobalSimulationTimers } from '@/utils/simulation/runtime'
 
@@ -209,8 +206,9 @@ const initialValidation: CircuitValidationResults = {
 
 const initialNodes: WorkspaceNode[] = ESP32_LED_BLINK_NODES.map((n) => ({
   ...n,
+  properties: (n.properties || {}) as any,
   zIndex: getDefaultZIndex(n.type),
-}))
+})) as WorkspaceNode[]
 
 const initialEdges: WorkspaceEdge[] = ESP32_LED_BLINK_EDGES.map((e, idx) => ({
   ...e,

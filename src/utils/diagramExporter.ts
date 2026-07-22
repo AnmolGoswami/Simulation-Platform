@@ -23,7 +23,7 @@ export async function exportDiagramAsImage(
   }
 
   // Calculate full diagram bounding box and required dimensions
-  const bounds = getNodesBounds(nodes)
+  const bounds = getNodesBounds(nodes as unknown as any[])
   const imageWidth = Math.max(1200, Math.ceil(bounds.width + 200))
   const imageHeight = Math.max(800, Math.ceil(bounds.height + 200))
 

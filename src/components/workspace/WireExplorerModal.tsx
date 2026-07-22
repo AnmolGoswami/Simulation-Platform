@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { X, Search, Eye, EyeOff, CheckSquare, Square, Filter, Palette, Sparkles, CheckCircle2 } from 'lucide-react'
 import { useSimulatorStore } from '@/store/useSimulatorStore'
 import { useReactFlow } from '@xyflow/react'
+import type { WireColor } from '@/types/workspace'
 
 const COLOR_MAP: Record<string, { hex: string; label: string; bg: string }> = {
   red: { hex: '#ef4444', label: 'Red (Power +)', bg: 'bg-red-500/20 text-red-400 border-red-500/30' },
@@ -34,13 +35,14 @@ export function WireExplorerModal() {
     return edges
       .filter((edge) => !edge.data?.isHidden)
       .map((edge) => {
-        const sourceNode = nodes.find((n) => n.id === edge.sourceNodeId || n.id === edge.source)
-        const targetNode = nodes.find((n) => n.id === edge.targetNodeId || n.id === edge.target)
+        const anyEdge = edge as any
+        const sourceNode = nodes.find((n) => n.id === edge.sourceNodeId || n.id === anyEdge.source)
+        const targetNode = nodes.find((n) => n.id === edge.targetNodeId || n.id === anyEdge.target)
 
-        const sourceName = String(sourceNode?.properties?.name || sourceNode?.type || edge.sourceNodeId || edge.source).replace(/-/g, ' ').toUpperCase()
-        const targetName = String(targetNode?.properties?.name || targetNode?.type || edge.targetNodeId || edge.target).replace(/-/g, ' ').toUpperCase()
-        const sourcePin = edge.sourcePinId || (edge.data?.sourcePinId as string) || edge.sourceHandle || 'pin'
-        const targetPin = edge.targetPinId || (edge.data?.targetPinId as string) || edge.targetHandle || 'pin'
+        const sourceName = String(sourceNode?.properties?.name || sourceNode?.type || edge.sourceNodeId || anyEdge.source).replace(/-/g, ' ').toUpperCase()
+        const targetName = String(targetNode?.properties?.name || targetNode?.type || edge.targetNodeId || anyEdge.target).replace(/-/g, ' ').toUpperCase()
+        const sourcePin = edge.sourcePinId || (edge.data as any)?.sourcePinId || anyEdge.sourceHandle || 'pin'
+        const targetPin = edge.targetPinId || (edge.data as any)?.targetPinId || anyEdge.targetHandle || 'pin'
         const color = (edge.data?.color as string) || edge.color || 'red'
         const isCompleted = completedWireIds.includes(edge.id)
 
@@ -97,7 +99,7 @@ export function WireExplorerModal() {
   }
 
   const handleColorChange = (edgeId: string, newColor: string) => {
-    updateEdge(edgeId, { color: newColor })
+    updateEdge(edgeId, { color: newColor as WireColor })
   }
 
   return (
@@ -266,6 +268,21 @@ export function WireExplorerModal() {
                   <div className={`flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${colorInfo.bg}`}>
                     <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: colorInfo.hex }} />
                     <span className="capitalize">{item.color}</span>
+                  </div>
+                  <div className="relative flex items-center group/picker">
+                    <Palette className="h-3.5 w-3.5 text-text-muted hover:text-text-primary transition-colors cursor-pointer" />
+                    <select
+                      value={item.color}
+                      onChange={(e) => handleColorChange(item.id, e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                      title="Change wire color"
+                    >
+                      {Object.entries(COLOR_MAP).map(([key, val]) => (
+                        <option key={key} value={key} className="bg-surface-900 text-text-primary">
+                          {val.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 

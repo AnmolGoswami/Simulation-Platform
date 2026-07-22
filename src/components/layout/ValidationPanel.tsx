@@ -76,7 +76,7 @@ export function ValidationPanel() {
     })
 
     if (template.code) {
-      useSimulatorStore.getState().updateCode(template.code)
+      useSimulatorStore.getState().setCode(template.code)
     }
 
     // Auto-fit the view after a short delay
