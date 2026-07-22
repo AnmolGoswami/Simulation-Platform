@@ -14,7 +14,14 @@ import type {
 } from '@/types'
 import { getComponentDefinition } from '@/utils/componentDefinitions'
 import { runElectricalValidation } from '@/utils/electricalRules'
-import { FAULT_TOLERANT_NODES, FAULT_TOLERANT_EDGES, FAULT_TOLERANT_AIRCRAFT_CODE } from '@/utils/autoWiring'
+import {
+  ESP32_LED_BLINK_NODES,
+  ESP32_LED_BLINK_EDGES,
+  ESP32_LED_BLINK_CODE,
+  FAULT_TOLERANT_NODES,
+  FAULT_TOLERANT_EDGES,
+  FAULT_TOLERANT_AIRCRAFT_CODE,
+} from '@/utils/autoWiring'
 import { cleanupGlobalSimulationTimers } from '@/utils/simulation/runtime'
 
 interface HistoryState {
@@ -200,22 +207,22 @@ const initialValidation: CircuitValidationResults = {
   voltageRails: {},
 }
 
-const initialNodes: WorkspaceNode[] = FAULT_TOLERANT_NODES.map((n) => ({
+const initialNodes: WorkspaceNode[] = ESP32_LED_BLINK_NODES.map((n) => ({
   ...n,
   zIndex: getDefaultZIndex(n.type),
 }))
 
-const initialEdges: WorkspaceEdge[] = FAULT_TOLERANT_EDGES.map((e, idx) => ({
+const initialEdges: WorkspaceEdge[] = ESP32_LED_BLINK_EDGES.map((e, idx) => ({
   ...e,
-  id: `wire-ft-${idx}`,
+  id: `wire-led-${idx}`,
   thickness: 2,
 }))
 
-const initialCode = FAULT_TOLERANT_AIRCRAFT_CODE
+const initialCode = ESP32_LED_BLINK_CODE
 
 export const useSimulatorStore = create<SimulatorState>()(
   subscribeWithSelector((set, get) => ({
-    projectName: 'Fault-Tolerant Aircraft Subsystem',
+    projectName: 'ESP32 LED Blink Project',
     projectId: null,
     nodes: initialNodes,
     edges: initialEdges,
@@ -625,6 +632,7 @@ export const useSimulatorStore = create<SimulatorState>()(
 
     resetProject: () =>
       set({
+        projectName: 'ESP32 LED Blink Project',
         nodes: initialNodes,
         edges: initialEdges,
         projectId: null,

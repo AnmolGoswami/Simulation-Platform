@@ -658,7 +658,61 @@ export const FAULT_TOLERANT_EDGES: { sourceNodeId: string; sourcePinId: string; 
   { sourceNodeId: 'esp32-1', sourcePinId: '3v3', targetNodeId: 'esp32-1', targetPinId: 'gpio32', color: 'red' }
 ]
 
+export const ESP32_LED_BLINK_CODE = `/* =========================================================
+   ESP32 DEVKIT V1 - SIMPLE LED BLINK PROJECT
+   Breadboard Build: GPIO 2 -> 220Ω Resistor -> Red LED -> GND
+   ========================================================= */
+
+const int LED_PIN = 2; // GPIO 2 (Built-in LED pin & breadboard output)
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED_PIN, OUTPUT);
+  Serial.println("----------------------------------------");
+  Serial.println("ESP32 LED Blink Simulation Initialized.");
+  Serial.println("Monitoring digital pin GPIO 2 output...");
+  Serial.println("----------------------------------------");
+}
+
+void loop() {
+  // Turn LED ON (HIGH output = 3.3V)
+  digitalWrite(LED_PIN, HIGH);
+  Serial.println("[TIMER] Status: LED ON  (GPIO 2 = HIGH - 3.3V)");
+  delay(1000); // Wait 1 second
+
+  // Turn LED OFF (LOW output = 0.0V)
+  digitalWrite(LED_PIN, LOW);
+  Serial.println("[TIMER] Status: LED OFF (GPIO 2 = LOW  - 0.0V)");
+  delay(1000); // Wait 1 second
+}
+`
+
+export const ESP32_LED_BLINK_NODES: { type: ComponentType; id: string; position: { x: number; y: number }; properties?: Record<string, any> }[] = [
+  { type: 'esp32-devkit', id: 'esp32-1', position: { x: 80, y: 160 }, properties: { name: 'ESP32 DevKit V1', rotation: 0 } },
+  { type: 'breadboard', id: 'breadboard-1', position: { x: 300, y: 160 }, properties: { name: 'Sensing & Power Breadboard', rotation: 0, splitPowerRails: false } },
+  { type: 'resistor', id: 'res-1', position: { x: 380, y: 220 }, properties: { name: '220Ω Resistor', resistance: 220, rotation: 0 } },
+  { type: 'led', id: 'led-1', position: { x: 440, y: 220 }, properties: { name: 'Status LED (Red)', color: '#ef4444', rotation: 90 } },
+]
+
+export const ESP32_LED_BLINK_EDGES: { sourceNodeId: string; sourcePinId: string; targetNodeId: string; targetPinId: string; color: WireColor }[] = [
+  // Signal path: GPIO2 -> hole-f-15 -> resistor a -> resistor b (hole-j-19) -> hole-f-19 -> LED anode
+  { sourceNodeId: 'esp32-1', sourcePinId: 'gpio2', targetNodeId: 'breadboard-1', targetPinId: 'hole-f-15', color: 'green' },
+  { sourceNodeId: 'res-1', sourcePinId: 'a', targetNodeId: 'breadboard-1', targetPinId: 'hole-j-15', color: 'green' },
+  { sourceNodeId: 'res-1', sourcePinId: 'b', targetNodeId: 'breadboard-1', targetPinId: 'hole-j-19', color: 'green' },
+  { sourceNodeId: 'led-1', sourcePinId: 'anode', targetNodeId: 'breadboard-1', targetPinId: 'hole-f-19', color: 'red' },
+  // Ground path: LED cathode -> bottom ground rail -> ESP32 GND
+  { sourceNodeId: 'led-1', sourcePinId: 'cathode', targetNodeId: 'breadboard-1', targetPinId: 'rail-bottom-neg-19', color: 'black' },
+  { sourceNodeId: 'breadboard-1', sourcePinId: 'rail-bottom-neg-1', targetNodeId: 'esp32-1', targetPinId: 'gnd3', color: 'black' },
+]
+
 export const WIRING_TEMPLATES: Record<string, WiringTemplate> = {
+  'esp32-led-blink': {
+    name: 'ESP32 LED Blink Project',
+    description: 'Simple breadboard circuit with ESP32 DevKit V1, 220Ω resistor, and Red LED blinking on/off via GPIO 2.',
+    code: ESP32_LED_BLINK_CODE,
+    nodes: ESP32_LED_BLINK_NODES,
+    edges: ESP32_LED_BLINK_EDGES,
+  },
   'fault-tolerant-aircraft': {
     name: 'Fault-Tolerant Aircraft Subsystem',
     description: 'ESP32 DevKit V1 with median voting sensors, dual battery + supercap reserve, and 4-wire PC fan stall check',
