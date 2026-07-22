@@ -30,9 +30,11 @@ import {
   Copy,
   RotateCw,
   Cable,
+  Camera,
 } from 'lucide-react'
 import SimulatorNode from './SimulatorNode'
 import WireEdge from './WireEdge'
+import { exportDiagramAsImage } from '@/utils/diagramExporter'
 import { BottomPanelToggle } from '@/components/layout/BottomPanel'
 import { useSimulatorStore } from '@/store/useSimulatorStore'
 import { getComponentDefinition } from '@/utils/componentDefinitions'
@@ -487,6 +489,11 @@ function WorkspaceCanvas() {
             onClick={() => setWireToolActive(!wireToolActive)}
             title="Wiring Tool (W)"
             active={wireToolActive}
+          />
+          <ToolbarButton
+            icon={Camera}
+            onClick={() => exportDiagramAsImage('png')}
+            title="Snapshot Diagram (PNG Image)"
           />
           {(selectedNodeIds.length > 0 || selectedEdgeIds.length > 0) && (
             <>

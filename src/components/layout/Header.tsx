@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plane, Zap, Save, FolderOpen, LogOut, LogIn, Loader2, Check, AlertCircle, Download } from 'lucide-react'
+import { Plane, Zap, Save, FolderOpen, LogOut, LogIn, Loader2, Check, AlertCircle, Download, Image as ImageIcon, FileCode, Upload, ChevronDown } from 'lucide-react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import type { User } from 'firebase/auth'
 import { auth } from '@/services/firebase'
@@ -8,6 +8,7 @@ import { useSimulatorStore } from '@/store/useSimulatorStore'
 import { SimulationControls } from './SimulationControls'
 import { AuthModal } from '@/components/auth/AuthModal'
 import { RecentProjectsModal } from '@/components/project/RecentProjectsModal'
+import { exportDiagramAsImage, exportProjectAsJSON, importProjectFromJSON } from '@/utils/diagramExporter'
 
 const STATUS_COLORS: Record<string, string> = {
   idle: 'bg-surface-600 text-text-secondary',
@@ -218,6 +219,51 @@ export function Header() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleDownloadDiagram = async (format: 'png' | 'svg') => {
+    setIsExporting(true)
+    setIsExportMenuOpen(false)
+    try {
+      await exportDiagramAsImage(format)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error exporting diagram image.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleExportProjectJSON = () => {
+    setIsExportMenuOpen(false)
+    exportProjectAsJSON()
+  }
+
+  const handleImportJSONClick = () => {
+    setIsExportMenuOpen(false)
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      const content = evt.target?.result as string
+      if (content) {
+        const success = importProjectFromJSON(content)
+        if (success) {
+          alert('Project imported successfully!')
+        } else {
+          alert('Failed to import project. Please check if the file is valid JSON.')
+        }
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
   // Tracks "the user tried to save while signed out" so we can resume the
   // save the moment auth actually resolves, instead of relying on a stale
   // `user` closure inside AuthModal's onSuccess (which fires before
@@ -406,15 +452,106 @@ export function Header() {
           My Projects
         </button>
 
-        {/* BOM Download button */}
-        <button
-          onClick={handleDownloadBOM}
-          className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface-800 text-text-secondary hover:bg-surface-700 hover:text-text-primary px-3 text-xs font-semibold transition-colors active:scale-95"
-          title="Download Bill of Materials (BOM) CSV list"
-        >
-          <Download className="h-3.5 w-3.5" />
-          Download BOM
-        </button>
+        {/* Hidden File Input for JSON Import */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept=".json"
+          className="hidden"
+        />
+
+        {/* Click-away backdrop */}
+        {isExportMenuOpen && (
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsExportMenuOpen(false)}
+          />
+        )}
+
+        {/* Export Dropdown */}
+        <div className="relative z-50">
+          <button
+            onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+            disabled={isExporting}
+            className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface-800 text-text-secondary hover:bg-surface-700 hover:text-text-primary px-3 text-xs font-semibold transition-colors active:scale-95 disabled:opacity-60"
+            title="Download diagram image, BOM CSV, or Project JSON"
+          >
+            {isExporting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-accent-400" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            <span>Export / Download</span>
+            <ChevronDown className={`h-3 w-3 transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {isExportMenuOpen && (
+            <div className="absolute right-0 top-full mt-1.5 w-56 rounded-lg border border-border bg-surface-850 p-1.5 shadow-xl flex flex-col gap-0.5">
+              <button
+                onClick={() => handleDownloadDiagram('png')}
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium text-text-secondary hover:bg-surface-750 hover:text-text-primary text-left transition-colors"
+              >
+                <ImageIcon className="h-4 w-4 text-accent-400 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="font-semibold text-text-primary">Download Diagram (PNG)</span>
+                  <span className="text-[10px] text-text-muted">High-res canvas image snapshot</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleDownloadDiagram('svg')}
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium text-text-secondary hover:bg-surface-750 hover:text-text-primary text-left transition-colors"
+              >
+                <ImageIcon className="h-4 w-4 text-purple-400 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="font-semibold text-text-primary">Download Diagram (SVG)</span>
+                  <span className="text-[10px] text-text-muted">Scalable vector diagram</span>
+                </div>
+              </button>
+
+              <div className="my-1 h-px bg-border" />
+
+              <button
+                onClick={() => {
+                  setIsExportMenuOpen(false)
+                  handleDownloadBOM()
+                }}
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium text-text-secondary hover:bg-surface-750 hover:text-text-primary text-left transition-colors"
+              >
+                <Download className="h-4 w-4 text-success-400 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="font-semibold text-text-primary">Bill of Materials (BOM)</span>
+                  <span className="text-[10px] text-text-muted">CSV file with quantities & specs</span>
+                </div>
+              </button>
+
+              <div className="my-1 h-px bg-border" />
+
+              <button
+                onClick={handleExportProjectJSON}
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium text-text-secondary hover:bg-surface-750 hover:text-text-primary text-left transition-colors"
+              >
+                <FileCode className="h-4 w-4 text-amber-400 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="font-semibold text-text-primary">Export Project (JSON)</span>
+                  <span className="text-[10px] text-text-muted">Backup exact simulation file</span>
+                </div>
+              </button>
+
+              <button
+                onClick={handleImportJSONClick}
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium text-text-secondary hover:bg-surface-750 hover:text-text-primary text-left transition-colors"
+              >
+                <Upload className="h-4 w-4 text-blue-400 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="font-semibold text-text-primary">Import Project (JSON)</span>
+                  <span className="text-[10px] text-text-muted">Load saved simulation JSON</span>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Divider */}
         <div className="h-5 w-px bg-border" />
