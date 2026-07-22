@@ -689,10 +689,11 @@ export function ComponentSVG({
       case 'pc-fan':
         {
           const speed = properties?.speed ?? 0
+          const rawDuration = Math.max(0.04, 3.0 - (speed / 3200) * 2.9)
           const animStyle = speed > 0.1 ? {
             transformOrigin: '38px 38px',
             animation: `spin linear infinite`,
-            animationDuration: `${Math.max(0.04, 3.0 - (speed / 3200) * 2.9)}s`
+            animationDuration: `${rawDuration.toFixed(2)}s`
           } : undefined
 
           return (
@@ -721,10 +722,11 @@ export function ComponentSVG({
       case 'dc-motor':
         {
           const speed = properties?.speed ?? 0
+          const rawDuration = Math.max(0.05, 3.0 - (Math.abs(speed) / 5000) * 2.95)
           const animStyle = Math.abs(speed) > 0.1 ? {
             transformOrigin: '35px 35px',
             animation: `spin linear infinite`,
-            animationDuration: `${Math.max(0.05, 3.0 - (Math.abs(speed) / 5000) * 2.95)}s`,
+            animationDuration: `${rawDuration.toFixed(2)}s`,
             animationDirection: speed < 0 ? 'reverse' : ('normal' as any)
           } : undefined
 
@@ -970,7 +972,8 @@ export function ComponentSVG({
           </g>
         )
 
-      case 'fuse':
+      case 'fuse': {
+        const isBlown = properties?.blown === true
         return (
           <g>
             <defs>
@@ -983,18 +986,30 @@ export function ComponentSVG({
             <line x1="40" y1="10" x2="50" y2="10" stroke="url(#fuse-cap-metal)" strokeWidth="1.8" />
             
             {/* Glass body */}
-            <rect x="14" y="5" width="22" height="10" rx="1" fill="#fef3c7" fillOpacity="0.25" stroke="#fbbf24" strokeWidth="0.8" />
+            <rect x="14" y="5" width="22" height="10" rx="1" fill={isBlown ? "#fee2e2" : "#fef3c7"} fillOpacity={isBlown ? "0.65" : "0.25"} stroke={isBlown ? "#ef4444" : "#fbbf24"} strokeWidth="0.8" />
             {/* Internal fuse wire */}
-            <line x1="14" y1="10" x2="36" y2="10" stroke="#b45309" strokeWidth="0.8" />
+            {isBlown ? (
+              <g>
+                <line x1="14" y1="10" x2="21" y2="10" stroke="#ef4444" strokeWidth="1.0" />
+                <line x1="29" y1="10" x2="36" y2="10" stroke="#ef4444" strokeWidth="1.0" />
+                <circle cx="23" cy="10" r="1.2" fill="#ef4444" />
+                <circle cx="27" cy="10" r="1.2" fill="#ef4444" />
+                <text x="25" y="-1" fill="#ef4444" fontSize="6.5" fontWeight="bold" textAnchor="middle">BLOWN</text>
+              </g>
+            ) : (
+              <line x1="14" y1="10" x2="36" y2="10" stroke="#b45309" strokeWidth="0.8" />
+            )}
             
             {/* Metal Caps */}
             <rect x="10" y="5" width="4" height="10" fill="url(#fuse-cap-metal)" stroke="#6b7280" strokeWidth="0.5" />
             <rect x="36" y="5" width="4" height="10" fill="url(#fuse-cap-metal)" stroke="#6b7280" strokeWidth="0.5" />
           </g>
         )
+      }
 
       case 'capacitor':
-      case 'ceramic-capacitor':
+      case 'ceramic-capacitor': {
+        const capVal = properties?.capacitance !== undefined ? `${properties.capacitance}µF` : '104'
         return (
           <g>
             <defs>
@@ -1016,11 +1031,13 @@ export function ComponentSVG({
             <ellipse cx="20" cy="11" rx="10.5" ry="7.5" fill="none" stroke="#b45309" strokeWidth="0.5" opacity="0.4" />
             
             {/* Markings */}
-            <text x="20" y="14" textAnchor="middle" fill="#451a03" fontSize="6.5" fontWeight="bold" fontFamily="monospace">104</text>
+            <text x="20" y="14" textAnchor="middle" fill="#451a03" fontSize="5.5" fontWeight="bold" fontFamily="monospace">{capVal}</text>
           </g>
         )
+      }
 
-      case 'electrolytic-capacitor':
+      case 'electrolytic-capacitor': {
+        const elVal = properties?.capacitance !== undefined ? `${properties.capacitance}µF` : '10µF'
         return (
           <g>
             <defs>
@@ -1045,11 +1062,14 @@ export function ComponentSVG({
             <text x="8.5" y="28" textAnchor="middle" fill="#1e293b" fontSize="7" fontWeight="bold">-</text>
             
             {/* Value print */}
-            <text x="16.5" y="22" textAnchor="middle" fill="#ffffff" fontSize="5.5" fontWeight="bold" fontFamily="monospace" transform="rotate(90, 16.5, 22)">10µF</text>
+            <text x="16.5" y="22" textAnchor="middle" fill="#ffffff" fontSize="5.5" fontWeight="bold" fontFamily="monospace" transform="rotate(90, 16.5, 22)">{elVal}</text>
           </g>
         )
+      }
 
-      case 'super-capacitor':
+      case 'super-capacitor': {
+        const scCap = properties?.capacitance !== undefined ? `${properties.capacitance}F` : '1F'
+        const scVolt = properties?.storedVoltage !== undefined ? `${Number(properties.storedVoltage).toFixed(1)}V` : '5.0V'
         return (
           <g>
             <defs>
@@ -1059,12 +1079,21 @@ export function ComponentSVG({
                 <stop offset="100%" stopColor="#4c1d95" />
               </linearGradient>
             </defs>
+            {/* Leads connecting to pos (15,55) and neg (35,55) */}
+            <line x1="15" y1="44" x2="15" y2="55" stroke="#9ca3af" strokeWidth="2" />
+            <line x1="35" y1="44" x2="35" y2="55" stroke="#9ca3af" strokeWidth="2" />
+            <text x="15" y="52" textAnchor="middle" fill="#10b981" fontSize="8" fontWeight="bold">+</text>
+            <text x="35" y="52" textAnchor="middle" fill="#ef4444" fontSize="8" fontWeight="bold">-</text>
+
+            {/* Twin cylindrical bodies */}
             <rect x="6" y="6" width="18" height="38" rx="3" fill="url(#supercap-grad)" stroke={stroke} strokeWidth={strokeWidth} />
             <rect x="26" y="6" width="18" height="38" rx="3" fill="url(#supercap-grad)" stroke={stroke} strokeWidth={strokeWidth} />
-            <text x="15" y="25" textAnchor="middle" fill="#c084fc" fontSize="5" fontWeight="bold" fontFamily="monospace" transform="rotate(90, 15, 25)">CAP</text>
-            <text x="35" y="25" textAnchor="middle" fill="#c084fc" fontSize="5" fontWeight="bold" fontFamily="monospace" transform="rotate(90, 35, 25)">CAP</text>
+            
+            <text x="15" y="25" textAnchor="middle" fill="#ffffff" fontSize="5" fontWeight="bold" fontFamily="monospace" transform="rotate(90, 15, 25)">{scCap}</text>
+            <text x="35" y="25" textAnchor="middle" fill="#e9d5ff" fontSize="5" fontWeight="bold" fontFamily="monospace" transform="rotate(90, 35, 25)">{scVolt}</text>
           </g>
         )
+      }
 
       case 'terminal-block':
         return (

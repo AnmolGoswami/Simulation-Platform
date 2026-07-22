@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useSimulatorStore } from '@/store/useSimulatorStore'
 import { transpileArduinoToJS } from '@/utils/simulation/transpiler'
-import { createSimulationContext } from '@/utils/simulation/runtime'
+import { createSimulationContext, cleanupGlobalSimulationTimers } from '@/utils/simulation/runtime'
 import { updateSimulationPhysics } from '@/utils/simulation/physics'
 
 // Physics integrates at a fixed, fine-grained step regardless of how fast
@@ -11,10 +11,11 @@ import { updateSimulationPhysics } from '@/utils/simulation/physics'
 const PHYSICS_FIXED_DT = 0.002
 const MAX_PHYSICS_STEPS_PER_FRAME = 250 // safety cap if a huge delay() stalls the loop
 
+let activeExecutionInstanceId = 0
+
 export function useSimulationRunner() {
   const simulationStatus = useSimulatorStore((s) => s.simulationStatus)
   const code = useSimulatorStore((s) => s.code)
-  const nodes = useSimulatorStore((s) => s.nodes)
 
   const setSimulationStatus = useSimulatorStore((s) => s.setSimulationStatus)
   const addLog = useSimulatorStore((s) => s.addLog)
@@ -31,8 +32,11 @@ export function useSimulationRunner() {
   useEffect(() => {
     if (simulationStatus !== 'running') {
       activeLoopRef.current = false
+      cleanupGlobalSimulationTimers()
       return
     }
+
+    const myInstanceId = ++activeExecutionInstanceId
 
     // Audio setup for buzzers - pre-create synchronously inside user click gesture stack
     let audioCtx: AudioContext | null = null
@@ -71,7 +75,9 @@ export function useSimulationRunner() {
     }
 
     activeLoopRef.current = true
+    cleanupGlobalSimulationTimers()
     resetSimulationState()
+    useSimulatorStore.getState().clearLogs()
     activeWarningsRef.current.clear()
     activeShortsRef.current.clear()
     physicsAccumulatorRef.current = 0
@@ -88,7 +94,7 @@ export function useSimulationRunner() {
     }
 
     // 2. Identify all microcontroller boards
-    const boards = nodes.filter((n) => n.type === 'arduino-uno' || n.type === 'esp32-devkit')
+    const boards = useSimulatorStore.getState().nodes.filter((n) => n.type === 'arduino-uno' || n.type === 'esp32-devkit')
     if (boards.length === 0) {
       addLog('warn', 'No microcontroller boards (Arduino Uno or ESP32) found in circuit workspace.', 'simulation')
     }
@@ -106,6 +112,7 @@ export function useSimulationRunner() {
       faulted: boolean
       initializer: () => Promise<void>
       tick: () => Promise<void>
+      cleanup: () => void
     }
 
     const runtimes: BoardRuntime[] = boards.map((board) => {
@@ -144,7 +151,12 @@ export function useSimulationRunner() {
           await setupFunc()
         },
         tick: async () => {
-          await loopFunc()
+          if (activeExecutionInstanceId === myInstanceId) {
+            await loopFunc()
+          }
+        },
+        cleanup: () => {
+          context._cleanup()
         },
       }
     })
@@ -176,7 +188,7 @@ export function useSimulationRunner() {
       let lastFrameYieldTime = performance.now()
 
       // Core Loop Runner
-      while (activeLoopRef.current) {
+      while (activeLoopRef.current && activeExecutionInstanceId === myInstanceId) {
         const loopStart = performance.now()
         const speedRatio = getSpeedRatio()
 
@@ -196,6 +208,8 @@ export function useSimulationRunner() {
             }
           })
         }
+
+        if (activeExecutionInstanceId !== myInstanceId) break
 
         const loopEnd = performance.now()
         const loopDur = loopEnd - loopStart
@@ -417,6 +431,8 @@ export function useSimulationRunner() {
           await new Promise((resolve) => setTimeout(resolve, waitTime))
           lastFrameYieldTime = performance.now()
         }
+
+        if (activeExecutionInstanceId !== myInstanceId) break
         // Throttled UI write to Zustand store to prevent high-frequency React re-renders
         if (now - lastUiWriteTime > 16) {
           useSimulatorStore.setState((state) => {
@@ -477,7 +493,12 @@ export function useSimulationRunner() {
     startExecution()
 
     return () => {
+      if (activeExecutionInstanceId === myInstanceId) {
+        activeExecutionInstanceId++
+      }
       activeLoopRef.current = false
+      cleanupGlobalSimulationTimers()
+      runtimes.forEach((rt) => rt.cleanup())
       stopAudio()
     }
   }, [simulationStatus, code])

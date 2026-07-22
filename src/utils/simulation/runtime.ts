@@ -10,6 +10,23 @@ export const INPUT = 0
 export const OUTPUT = 1
 export const INPUT_PULLUP = 2
 export const INPUT_PULLDOWN = 3
+export const LED_BUILTIN = 13
+export const A0 = 'A0'
+export const A1 = 'A1'
+export const A2 = 'A2'
+export const A3 = 'A3'
+export const A4 = 'A4'
+export const A5 = 'A5'
+export const A6 = 'A6'
+export const A7 = 'A7'
+export const A8 = 'A8'
+export const A9 = 'A9'
+export const A10 = 'A10'
+export const A11 = 'A11'
+export const A12 = 'A12'
+export const A13 = 'A13'
+export const A14 = 'A14'
+export const A15 = 'A15'
 
 /**
  * Resolves whatever pin identifier a user sketch passes (e.g. digitalWrite(13, HIGH)
@@ -80,6 +97,34 @@ export function getPinNetState(
 }
 
 /**
+ * Resolves the simulated voltage of any pin using the circuit solver.
+ */
+export function getPinVoltage(
+  nodes: WorkspaceNode[],
+  edges: WorkspaceEdge[],
+  targetNodeId: string,
+  targetPinId: string,
+  gpioPinStates: Record<string, Record<string, any>>
+): number {
+  const activeFaults = useSimulatorStore.getState().activeFaults || {}
+  const solution = solveCircuit(nodes, edges, gpioPinStates, activeFaults)
+  return solution.nodeVoltages[`${targetNodeId}:${targetPinId}`] || 0.0
+}
+
+/**
+ * Global timer registries for all active simulation contexts to guarantee exact cleanup on reset/stop.
+ */
+const globalActiveIntervals = new Set<any>()
+const globalActiveTimeouts = new Set<any>()
+
+export function cleanupGlobalSimulationTimers() {
+  globalActiveIntervals.forEach((id) => clearInterval(id))
+  globalActiveIntervals.clear()
+  globalActiveTimeouts.forEach((id) => clearTimeout(id))
+  globalActiveTimeouts.clear()
+}
+
+/**
  * Creates the global context environment for executing compiled Arduino / ESP32 code.
  */
 export function createSimulationContext(
@@ -88,7 +133,13 @@ export function createSimulationContext(
   getSpeedRatio: () => number,
   onPinStateChange?: (pinId: string, value: any) => void
 ) {
-  const store = useSimulatorStore.getState()
+  const store = new Proxy({} as ReturnType<typeof useSimulatorStore.getState>, {
+    get(_, prop) {
+      const liveState = useSimulatorStore.getState()
+      const val = (liveState as any)[prop]
+      return typeof val === 'function' ? val.bind(liveState) : val
+    }
+  })
 
   // Resolve the board's component type once, so every GPIO call below can
   // normalize pin IDs against its real pin list instead of guessing a prefix.
@@ -98,6 +149,9 @@ export function createSimulationContext(
   const resolvePin = (pin: number | string): string => normalizePinId(boardType, pin)
 
   let lastYield = performance.now()
+  let _isAborted = false
+  const activeIntervals = new Set<any>()
+  const activeTimeouts = new Set<any>()
 
   const setPinState = (pinStr: string, value: any) => {
     if (onPinStateChange) {
@@ -108,6 +162,16 @@ export function createSimulationContext(
   }
 
   const ledcChannels: Record<number, string | number> = {}
+
+  // Buffers text written via Serial.print()/write() and only emits a log
+  // line on Serial.println() (or when the buffer already has content
+  // flushed) — mirrors how a real Serial monitor renders one logical line
+  // per println(), instead of one log entry per print()/println() call.
+  let serialLineBuffer = ''
+
+  let currentAdcBits = boardType.includes('esp32') ? 12 : 10
+  const getAdcMax = () => (1 << currentAdcBits) - 1
+  const getVRef = () => boardType.includes('esp32') ? 3.3 : 5.0
 
   const analogReadImpl = (pin: number | string) => {
     const pinStr = resolvePin(pin).toLowerCase()
@@ -121,11 +185,39 @@ export function createSimulationContext(
       if (visited.has(current)) continue
       visited.add(current)
 
-      const [currNodeId] = current.split(':')
+      const [currNodeId, currPinId] = current.split(':')
       const node = store.nodes.find(n => n.id === currNodeId)
-      if (node && (node.type === 'lm35' || node.type === 'potentiometer' || node.type === 'battery-12v')) {
-        sensorNode = node
-        break
+      if (node) {
+        if (node.type === 'lm35' || node.type === 'potentiometer' || node.type === 'battery-12v' || node.type === 'super-capacitor' || node.type === 'capacitor' || node.type === 'electrolytic-capacitor' || node.type === 'ceramic-capacitor') {
+          sensorNode = node
+          break
+        }
+
+        // Pass-through internal connections across switches and fuses
+        const activeFaults = store.activeFaults || {}
+        if (node.type.startsWith('toggle-switch-spst') || node.type.startsWith('slide-switch-spst')) {
+          const isClosed = node.properties.state === true || node.properties.state === 'true'
+          if (isClosed) {
+            if (currPinId === 'a') queue.push(`${currNodeId}:b`)
+            if (currPinId === 'b') queue.push(`${currNodeId}:a`)
+          }
+        } else if (node.type.startsWith('toggle-switch-spdt') || node.type.startsWith('slide-switch-spdt') || node.type === 'toggle-switch') {
+          const isNc = node.properties.state === 'nc' || node.properties.state === false
+          if (currPinId === 'com') queue.push(`${currNodeId}:${isNc ? 'nc' : 'no'}`)
+          if (currPinId === 'nc' && isNc) queue.push(`${currNodeId}:com`)
+          if (currPinId === 'no' && !isNc) queue.push(`${currNodeId}:com`)
+        } else if (node.type === 'fuse') {
+          const isBlown = activeFaults['fuse-blown'] || (node.properties.blown as boolean) || false
+          if (!isBlown) {
+            if (currPinId === 'a') queue.push(`${currNodeId}:b`)
+            if (currPinId === 'b') queue.push(`${currNodeId}:a`)
+          }
+        } else if (node.type === 'diode-1n4007' || node.type === 'schottky-diode') {
+          if (currPinId === 'cathode') queue.push(`${currNodeId}:anode`)
+        } else if (node.type === 'resistor') {
+          if (currPinId === 'a') queue.push(`${currNodeId}:b`)
+          if (currPinId === 'b') queue.push(`${currNodeId}:a`)
+        }
       }
 
       store.edges.forEach((edge) => {
@@ -155,23 +247,53 @@ export function createSimulationContext(
         }
 
         const voltage = temp * 0.01
-        return Math.max(0, Math.min(1023, Math.floor((voltage / 5.0) * 1023)))
+        const maxAdc = getAdcMax()
+        return Math.min(maxAdc, Math.floor((voltage / getVRef()) * maxAdc))
       }
       if (sensorNode.type === 'potentiometer') {
         const resistance = Number(sensorNode.properties.resistance || 500)
-        return Math.floor((resistance / 10000) * 1023)
+        return Math.floor((resistance / 10000) * getAdcMax())
       }
       if (sensorNode.type === 'battery-12v') {
         const volt = Number(sensorNode.properties.voltage || 12)
-        return Math.floor((volt / 15.0) * 1023)
+        const maxAdc = getAdcMax()
+        return Math.min(maxAdc, Math.floor(((volt / 4.03) / getVRef()) * maxAdc))
+      }
+      if (sensorNode.type === 'super-capacitor') {
+        const volt = Number(sensorNode.properties.storedVoltage ?? sensorNode.properties.voltage ?? 0)
+        const maxAdc = getAdcMax()
+        return Math.max(0, Math.min(maxAdc, Math.floor(((volt / 5.545) / getVRef()) * maxAdc)))
+      }
+      if (sensorNode.type === 'capacitor' || sensorNode.type === 'electrolytic-capacitor' || sensorNode.type === 'ceramic-capacitor') {
+        const volt = Number(sensorNode.properties.storedCapVoltage ?? 0)
+        const maxAdc = getAdcMax()
+        return Math.max(0, Math.min(maxAdc, Math.floor((volt / getVRef()) * maxAdc)))
       }
     }
 
+    if (pinStr === 'gpio34' || pinStr === '34' || pinStr === 'gpio35' || pinStr === '35' || pinStr === 'gpio33' || pinStr === '33') {
+      return 0
+    }
+
+    const solverVolt = getPinVoltage(store.nodes, store.edges, nodeId, pinStr, store.gpioPinStates)
+    if (solverVolt > 0.001) {
+      const maxAdc = getAdcMax()
+      return Math.max(0, Math.min(maxAdc, Math.floor((solverVolt / getVRef()) * maxAdc)))
+    }
     return 0
   }
 
   return {
+    _cleanup: () => {
+      _isAborted = true
+      activeIntervals.forEach((id) => { clearInterval(id); globalActiveIntervals.delete(id) })
+      activeIntervals.clear()
+      activeTimeouts.forEach((id) => { clearTimeout(id); globalActiveTimeouts.delete(id) })
+      activeTimeouts.clear()
+    },
+    get _isAborted() { return _isAborted },
     _yield: async () => {
+      if (_isAborted) return
       const now = performance.now()
       if (now - lastYield > 50) {
         await new Promise<void>((resolve) => setTimeout(resolve, 0))
@@ -185,6 +307,25 @@ export function createSimulationContext(
     OUTPUT,
     INPUT_PULLUP,
     INPUT_PULLDOWN,
+    LED_BUILTIN,
+
+    // Analog Pin Constants
+    A0,
+    A1,
+    A2,
+    A3,
+    A4,
+    A5,
+    A6,
+    A7,
+    A8,
+    A9,
+    A10,
+    A11,
+    A12,
+    A13,
+    A14,
+    A15,
 
     // ESP32 ADC & Interrupt constants
     ADC_11db: 3,
@@ -195,6 +336,37 @@ export function createSimulationContext(
     SSD1306_BLACK: 0,
     SH110X_WHITE: 1,
     SH110X_BLACK: 0,
+
+    // Arduino byte(x) cast — clamps/wraps a value into the 0-255 range,
+    // matching the real language's `byte` type conversion. Needed for
+    // sketches that do things like `lcd.write(byte(1))`.
+    byte: (val: number) => val & 0xff,
+
+    // Interrupt enable/disable — real hardware pauses/resumes the global
+    // interrupt controller; there's nothing to pause here since interrupt
+    // callbacks are just a setInterval (see attachInterrupt below), so
+    // these are safe no-ops. Without them, any sketch that briefly guards
+    // a shared variable (e.g. `noInterrupts(); x = counter; interrupts();`)
+    // — a very common Arduino pattern — throws "is not defined".
+    noInterrupts: () => {},
+    interrupts: () => {},
+
+    // Common Arduino built-in globals that are macros/functions in the
+    // real language but don't exist as bare globals in JS. Added so
+    // ordinary sketches (this one uses abs(); others commonly use the
+    // rest) don't crash one missing-function at a time.
+    abs: (val: number) => Math.abs(val),
+    min: (a: number, b: number) => Math.min(a, b),
+    max: (a: number, b: number) => Math.max(a, b),
+    constrain: (val: number, low: number, high: number) => Math.min(Math.max(val, low), high),
+    map: (val: number, inMin: number, inMax: number, outMin: number, outMax: number) =>
+      ((val - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin,
+    sq: (val: number) => val * val,
+    random: (a: number, b?: number) => {
+      // Arduino's random(max) or random(min, max), both integer, exclusive of max
+      const [lo, hi] = b === undefined ? [0, a] : [a, b]
+      return Math.floor(Math.random() * (hi - lo)) + lo
+    },
 
     // I2C Wire mock
     Wire: {
@@ -209,12 +381,26 @@ export function createSimulationContext(
     millis: () => Math.floor((Date.now() - simStartRealTime) * getSpeedRatio()),
     micros: () => Math.floor((Date.now() - simStartRealTime) * 1000 * getSpeedRatio()),
     delay: (ms: number) => new Promise<void>((resolve) => {
+      if (_isAborted) { resolve(); return }
       const speed = getSpeedRatio()
-      setTimeout(resolve, speed === Infinity ? 0 : ms / speed)
+      const timeoutId = setTimeout(() => {
+        activeTimeouts.delete(timeoutId)
+        globalActiveTimeouts.delete(timeoutId)
+        resolve()
+      }, speed === Infinity ? 0 : ms / speed)
+      activeTimeouts.add(timeoutId)
+      globalActiveTimeouts.add(timeoutId)
     }),
     delayMicroseconds: (us: number) => new Promise<void>((resolve) => {
+      if (_isAborted) { resolve(); return }
       const speed = getSpeedRatio()
-      setTimeout(resolve, speed === Infinity ? 0 : (us / 1000) / speed)
+      const timeoutId = setTimeout(() => {
+        activeTimeouts.delete(timeoutId)
+        globalActiveTimeouts.delete(timeoutId)
+        resolve()
+      }, speed === Infinity ? 0 : (us / 1000) / speed)
+      activeTimeouts.add(timeoutId)
+      globalActiveTimeouts.add(timeoutId)
     }),
 
     // GPIO APIs — every pin argument is resolved against the board's real
@@ -248,12 +434,16 @@ export function createSimulationContext(
       setPinState(resolvePin(pin), val)
     },
     analogRead: analogReadImpl,
-    analogReadResolution: (_res: number) => {},
+    analogReadResolution: (res: number) => {
+      if (res >= 8 && res <= 16) {
+        currentAdcBits = res
+      }
+    },
     analogSetAttenuation: (_att: number) => {},
     analogReadMilliVolts: (pin: number | string) => {
-      // Map 0-1023 to 0-3300mV (ESP32 ADC is 3.3V max)
       const val = analogReadImpl(pin)
-      return Math.floor((val / 1023.0) * 3300)
+      const maxAdc = getAdcMax()
+      return Math.floor((val / maxAdc) * (getVRef() * 1000))
     },
 
     // PWM ledc APIs
@@ -273,30 +463,35 @@ export function createSimulationContext(
     // Interrupt APIs
     digitalPinToInterrupt: (pin: any) => pin,
     attachInterrupt: (_pin: any, callback: () => void, _mode: any) => {
-      // Run the callback periodically in a setInterval to simulate hardware pulses!
+      // Run the callback periodically in a setInterval to simulate hardware tachometer pulses!
+      let pulseAccumulator = 0
       const interval = setInterval(() => {
-        if (useSimulatorStore.getState().simulationStatus === 'running') {
-          const storeInstance = useSimulatorStore.getState()
-          const cutoff = storeInstance.gpioPinStates[nodeId]?.['d14'] // FAN_CUTOFF_PIN = 14
-          const pwm = storeInstance.gpioPinStates[nodeId]?.['d13']    // FAN_PWM_PIN = 13
-          
-          const isCutoffActive = (cutoff === 'HIGH' || cutoff === 1)
-          const pwmVal = typeof pwm === 'number' ? pwm : (pwm === 'HIGH' ? 255 : 0)
-          
-          if (isCutoffActive && pwmVal > 0) {
-            const pulseProbability = pwmVal / 255
-            if (Math.random() < pulseProbability) {
-              try {
-                callback()
-              } catch (e) {
-                // ignore
-              }
+        if (_isAborted || useSimulatorStore.getState().simulationStatus !== 'running') {
+          clearInterval(interval)
+          activeIntervals.delete(interval)
+          globalActiveIntervals.delete(interval)
+          return
+        }
+        const storeInstance = useSimulatorStore.getState()
+        const fanNode = storeInstance.nodes.find(n => n.type === 'pc-fan' || n.type === 'dc-motor')
+        const rpm = Number(fanNode?.properties?.rpm ?? 0)
+
+        if (rpm > 0) {
+          pulseAccumulator += rpm / 1500
+          while (pulseAccumulator >= 1) {
+            pulseAccumulator -= 1
+            try {
+              callback()
+            } catch (e) {
+              // ignore
             }
           }
         } else {
-          clearInterval(interval)
+          pulseAccumulator = 0
         }
-      }, 50)
+      }, 20)
+      activeIntervals.add(interval)
+      globalActiveIntervals.add(interval)
     },
 
     // String formatting
@@ -318,21 +513,86 @@ export function createSimulationContext(
       setPinState(resolvePin(pin), 0)
     },
 
-    // Serial
+    // Serial — buffers text from print()/write() and only emits a log
+    // line on println() (matching how a real Serial monitor renders
+    // output). Previously every print()/println() call logged its own
+    // line, which split single logical lines like
+    // "Active source: SUPERCAP (EMERGENCY)" into two separate log rows,
+    // and also stringified a no-arg println() (a blank-line separator)
+    // into the literal text "undefined".
     Serial: {
       begin: (baud: number) => {
+        serialLineBuffer = ''
         store.addLog('info', `Serial interface initialized at ${baud} baud.`, 'serial')
       },
-      print: (val: any) => {
-        store.addLog('serial', String(val), 'serial')
+      print: (val?: any, arg2?: any) => {
+        if (val !== undefined) {
+          if (typeof val === 'number' && typeof arg2 === 'number') {
+            if (!Number.isInteger(val) && arg2 >= 0 && arg2 <= 10) {
+              serialLineBuffer += val.toFixed(arg2)
+            } else if (Number.isInteger(val) && [2, 8, 10, 16].includes(arg2)) {
+              serialLineBuffer += val.toString(arg2).toUpperCase()
+            } else {
+              serialLineBuffer += val.toFixed(arg2 >= 0 && arg2 <= 10 ? arg2 : 2)
+            }
+          } else {
+            serialLineBuffer += String(val)
+          }
+        }
       },
-      println: (val: any) => {
-        store.addLog('serial', String(val), 'serial')
+      println: (val?: any, arg2?: any) => {
+        if (val !== undefined) {
+          if (typeof val === 'number' && typeof arg2 === 'number') {
+            if (!Number.isInteger(val) && arg2 >= 0 && arg2 <= 10) {
+              serialLineBuffer += val.toFixed(arg2)
+            } else if (Number.isInteger(val) && [2, 8, 10, 16].includes(arg2)) {
+              serialLineBuffer += val.toString(arg2).toUpperCase()
+            } else {
+              serialLineBuffer += val.toFixed(arg2 >= 0 && arg2 <= 10 ? arg2 : 2)
+            }
+          } else {
+            serialLineBuffer += String(val)
+          }
+        }
+        store.addLog('serial', serialLineBuffer, 'serial')
+        serialLineBuffer = ''
+      },
+      printf: (fmt?: any, ...args: any[]) => {
+        if (typeof fmt !== 'string') return
+        let i = 0
+        const formatted = fmt.replace(/%([0-9A-Za-z.\-]+)/g, (match, spec) => {
+          if (match === '%%') return '%'
+          const arg = args[i++]
+          if (arg === undefined) return match
+          if (spec.includes('f')) {
+            const precMatch = spec.match(/\.(\d+)f/)
+            const prec = precMatch ? parseInt(precMatch[1], 10) : 6
+            const num = typeof arg === 'number' ? arg : parseFloat(arg)
+            return !isNaN(num) ? num.toFixed(prec) : String(arg)
+          }
+          if (spec.includes('d') || spec.includes('i')) {
+            const num = typeof arg === 'number' ? arg : parseInt(arg, 10)
+            return !isNaN(num) ? String(Math.floor(num)) : String(arg)
+          }
+          if (spec.includes('x') || spec.includes('X')) {
+            const num = typeof arg === 'number' ? arg : parseInt(arg, 10)
+            return !isNaN(num) ? Math.floor(num).toString(16).toUpperCase() : String(arg)
+          }
+          if (spec.includes('s')) {
+            return String(arg)
+          }
+          return String(arg)
+        })
+        const parts = (serialLineBuffer + formatted).split('\n')
+        serialLineBuffer = parts.pop() || ''
+        for (const line of parts) {
+          store.addLog('serial', line, 'serial')
+        }
       },
       available: () => 0,
       read: () => -1,
-      write: (val: any) => {
-        store.addLog('serial', String(val), 'serial')
+      write: (val?: any) => {
+        serialLineBuffer += val === undefined ? '' : String(val)
       },
     },
 
@@ -345,6 +605,11 @@ export function createSimulationContext(
       displayBuffer: string[][]
       cursorCol = 0
       cursorRow = 0
+      // Custom character glyphs registered via createChar(), keyed by the
+      // 0-7 index the sketch used. Each value is the raw 8-byte bitmap
+      // passed in — kept around in case a richer LCD renderer wants to
+      // draw the actual pixel pattern rather than a stand-in glyph.
+      customChars: Record<number, number[]> = {}
 
       constructor(addr: number, cols: number, rows: number) {
         this.addr = addr
@@ -386,6 +651,28 @@ export function createSimulationContext(
         }
         this.updateStore()
       }
+
+      // Registers an 8-byte custom glyph bitmap under index 0-7, matching
+      // the real LiquidCrystal_I2C::createChar(uint8_t, uint8_t[]).
+      createChar(index: number, bitmap: number[]) {
+        this.customChars[index & 0x7] = Array.isArray(bitmap) ? [...bitmap] : []
+      }
+
+      // lcd.write(byte(n)) writes a *raw* character code rather than
+      // printable text. Codes 0-7 render whatever glyph was registered
+      // via createChar (shown here as a stand-in symbol, since this is a
+      // text-buffer display rather than a pixel-level one); any other
+      // code falls back to its printable ASCII character.
+      write(val: number) {
+        if (this.cursorCol >= this.cols) return
+        const code = val & 0xff
+        const glyph = code >= 0 && code <= 7 ? this.customChars[code] : undefined
+        const ch = glyph ? '\u25A0' /* ▪ stand-in for a registered custom icon */ : String.fromCharCode(code)
+        this.displayBuffer[this.cursorRow][this.cursorCol] = ch
+        this.cursorCol++
+        this.updateStore()
+      }
+
       updateStore() {
         const lcdNode = store.nodes.find(n => n.type === 'lcd1602')
         if (lcdNode) {

@@ -94,12 +94,11 @@ function SimulatorComponentNode({ id, data, selected }: NodeProps) {
   const splitPowerRails = storeNode?.properties.splitPowerRails as boolean || false
   const wireToolActive = useSimulatorStore((s) => s.wireToolActive)
   const updateNodeProperties = useSimulatorStore((s) => s.updateNodeProperties)
-  const allNodes = useSimulatorStore((s) => s.nodes)
 
   const getConnectedBreadboardHole = (pin: PinDefinition) => {
     if (nodeData.componentType === 'breadboard' || !storeNode) return null
     
-    const breadboards = allNodes.filter((n) => n.type === 'breadboard')
+    const breadboards = useSimulatorStore.getState().nodes.filter((n) => n.type === 'breadboard')
     if (breadboards.length === 0) return null
     
     const w = def?.defaultWidth ?? 60

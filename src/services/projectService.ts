@@ -38,7 +38,7 @@ function serializeNestedArrays(obj: any): any {
     const hasNested = obj.some((item) => Array.isArray(item))
     if (hasNested) {
       return {
-        __firebase_nested_array__: JSON.stringify(obj.map(serializeNestedArrays)),
+        _firebase_nested_array_: JSON.stringify(obj.map(serializeNestedArrays)),
       }
     }
     return obj.map(serializeNestedArrays)
@@ -47,7 +47,11 @@ function serializeNestedArrays(obj: any): any {
   const result: any = {}
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      result[key] = serializeNestedArrays(obj[key])
+      let cleanKey = key
+      if (cleanKey.startsWith('__') && cleanKey.endsWith('__')) {
+        cleanKey = `_${cleanKey.slice(2, -2)}_`
+      }
+      result[cleanKey] = serializeNestedArrays(obj[key])
     }
   }
   return result
@@ -61,9 +65,10 @@ function deserializeNestedArrays(obj: any): any {
     return obj
   }
 
-  if (obj.__firebase_nested_array__ !== undefined) {
+  const nestedVal = obj._firebase_nested_array_ !== undefined ? obj._firebase_nested_array_ : obj.__firebase_nested_array__
+  if (nestedVal !== undefined) {
     try {
-      const parsed = JSON.parse(obj.__firebase_nested_array__)
+      const parsed = JSON.parse(nestedVal)
       return parsed.map(deserializeNestedArrays)
     } catch (e) {
       console.error('Failed to deserialize nested array:', e)

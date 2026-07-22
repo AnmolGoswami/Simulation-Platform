@@ -238,7 +238,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     description: 'High-capacity energy storage',
     defaultWidth: 50,
     defaultHeight: 70,
-    defaultProperties: { name: 'Super Cap', rotation: 0, capacitance: 1, voltage: 5.5 },
+    defaultProperties: { name: 'Super Cap', rotation: 0, capacitance: 1, voltage: 5.5, storedVoltage: 5.0 },
     pins: [
       { id: 'pos', label: '+', type: 'power', x: 15, y: 55, voltageLimit: 5.5 },
       { id: 'neg', label: '-', type: 'ground', x: 35, y: 55 },
@@ -743,7 +743,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     description: 'Non-polarized ceramic disc capacitor',
     defaultWidth: 40,
     defaultHeight: 30,
-    defaultProperties: { name: 'Capacitor', rotation: 0, capacitance: 100 },
+    defaultProperties: { name: 'Capacitor', rotation: 0, capacitance: 100, storedCapVoltage: 0 },
     pins: [
       { id: 'a', label: '1', type: 'signal', x: 10, y: 22 },
       { id: 'b', label: '2', type: 'signal', x: 30, y: 22 },
@@ -756,7 +756,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     description: 'Polarized radial capacitor (Check polarity!)',
     defaultWidth: 30,
     defaultHeight: 60,
-    defaultProperties: { name: 'Electrolytic Cap', rotation: 0, capacitance: 1000, voltage: 16 },
+    defaultProperties: { name: 'Electrolytic Cap', rotation: 0, capacitance: 1000, voltage: 16, storedCapVoltage: 0 },
     pins: [
       { id: 'pos', label: '+', type: 'signal', x: 8, y: 50, voltageLimit: 16 },
       { id: 'neg', label: '-', type: 'ground', x: 22, y: 50 },
@@ -836,7 +836,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     description: 'Configurable current glass tube fuse',
     defaultWidth: 50,
     defaultHeight: 20,
-    defaultProperties: { name: 'Fuse', rotation: 0, currentLimit: 1.0 }, // 1A fuse limit
+    defaultProperties: { name: 'Fuse', rotation: 0, currentLimit: 1.0, blown: false }, // 1A fuse limit
     pins: [
       { id: 'a', label: 'Term 1', type: 'signal', x: 6, y: 10 },
       { id: 'b', label: 'Term 2', type: 'signal', x: 44, y: 10 },

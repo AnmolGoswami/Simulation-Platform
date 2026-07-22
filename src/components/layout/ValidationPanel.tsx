@@ -75,6 +75,10 @@ export function ValidationPanel() {
       addEdge(e)
     })
 
+    if (template.code) {
+      useSimulatorStore.getState().updateCode(template.code)
+    }
+
     // Auto-fit the view after a short delay
     setTimeout(() => {
       fitView({ duration: 800 })

@@ -378,13 +378,59 @@ export function PropertiesInspector() {
 
             {properties.capacitance !== undefined && (
               <PropertyField
-                label="Capacitance (µF)"
+                label={selectedNode.type === 'super-capacitor' ? "Capacitance (F)" : "Capacitance (µF)"}
                 value={String(properties.capacitance)}
                 type="number"
                 onChange={(v) =>
-                  updateNodeProperties(selectedNode.id, { capacitance: Number(v) || 0 })
+                  updateNodeProperties(selectedNode.id, { capacitance: Math.max(0.001, Number(v) || 0) })
                 }
               />
+            )}
+
+            {properties.storedVoltage !== undefined && selectedNode.type === 'super-capacitor' && (
+              <PropertyField
+                label="Stored Charge (V)"
+                value={Number(properties.storedVoltage).toFixed(2)}
+                type="number"
+                onChange={(v) =>
+                  updateNodeProperties(selectedNode.id, { storedVoltage: Math.max(0, Number(v) || 0) })
+                }
+              />
+            )}
+
+            {properties.storedCapVoltage !== undefined && (selectedNode.type === 'capacitor' || selectedNode.type === 'electrolytic-capacitor' || selectedNode.type === 'ceramic-capacitor') && (
+              <PropertyField
+                label="Stored Voltage (V)"
+                value={Number(properties.storedCapVoltage).toFixed(2)}
+                type="number"
+                onChange={(v) =>
+                  updateNodeProperties(selectedNode.id, { storedCapVoltage: Math.max(0, Number(v) || 0) })
+                }
+              />
+            )}
+
+            {selectedNode.type === 'fuse' && (
+              <div className="flex flex-col gap-2 border-t border-surface-800 pt-2 mt-2">
+                <PropertyField
+                  label="Current Limit (A)"
+                  value={String(properties.currentLimit ?? 1.0)}
+                  type="number"
+                  onChange={(v) =>
+                    updateNodeProperties(selectedNode.id, { currentLimit: Math.max(0.01, Number(v) || 1.0) })
+                  }
+                />
+                <button
+                  type="button"
+                  onClick={() => updateNodeProperties(selectedNode.id, { blown: !properties.blown })}
+                  className={`w-full py-1.5 px-3 rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm ${
+                    properties.blown
+                      ? 'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30'
+                      : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30'
+                  }`}
+                >
+                  {properties.blown ? '💥 Fuse Blown (Click to Replace/Reset)' : '⚡ Fuse Intact (Click to Blow)'}
+                </button>
+              </div>
             )}
           </div>
 

@@ -42,9 +42,11 @@ function findGroundJunctions(junctions: string[][], nodes: WorkspaceNode[]): Set
     }
   })
 
-  if (groundJuncs.size > 0) {
-    return groundJuncs
-  }
+  // FIX: do NOT return early here — always fall through to also include
+  // battery negative terminals.  Previously, if an MCU's GND pin was found
+  // in Step 1, this early return prevented Step 2 from running, so a
+  // standalone battery→fan sub-circuit had no recognized ground junction and
+  // the fan's GND pin was not marked as grounded by the solver.
 
   // 2. Battery negative terminals
   junctions.forEach((jGroup, idx) => {
@@ -166,7 +168,7 @@ export function solveCircuitNew(
       if (j1 === undefined || j2 === undefined) return
 
       const isBroken = activeFaults[`wire-break-${edge.id}`]
-      const rWire = isBroken ? 1e6 : 0.01
+      const rWire = isBroken ? 1e10 : 0.01
       stampConductance(j1, j2, 1 / rWire)
     })
 
@@ -193,7 +195,7 @@ export function solveCircuitNew(
           const j2 = pinToJunction[`${node.id}:b`]
           if (j1 === undefined || j2 === undefined) return
           const isClosed = state === true || state === 'true'
-          const r = isClosed ? 0.01 : 1e6
+          const r = isClosed ? 0.01 : 1e10
           stampConductance(j1, j2, 1 / r)
         } else if (isSPDT) {
           const jCom = pinToJunction[`${node.id}:com`]
@@ -202,8 +204,8 @@ export function solveCircuitNew(
           if (jCom === undefined) return
           
           const isNc = state === 'nc'
-          if (jNc !== undefined) stampConductance(jCom, jNc, 1 / (isNc ? 0.01 : 1e6))
-          if (jNo !== undefined) stampConductance(jCom, jNo, 1 / (isNc ? 1e6 : 0.01))
+          if (jNc !== undefined) stampConductance(jCom, jNc, 1 / (isNc ? 0.01 : 1e10))
+          if (jNo !== undefined) stampConductance(jCom, jNo, 1 / (isNc ? 1e10 : 0.01))
         } else if (isDPDT) {
           const jCom1 = pinToJunction[`${node.id}:com1`]
           const jNo1 = pinToJunction[`${node.id}:no1`]
@@ -214,12 +216,12 @@ export function solveCircuitNew(
 
           const isNc = state === 'nc'
           if (jCom1 !== undefined) {
-            if (jNc1 !== undefined) stampConductance(jCom1, jNc1, 1 / (isNc ? 0.01 : 1e6))
-            if (jNo1 !== undefined) stampConductance(jCom1, jNo1, 1 / (isNc ? 1e6 : 0.01))
+            if (jNc1 !== undefined) stampConductance(jCom1, jNc1, 1 / (isNc ? 0.01 : 1e10))
+            if (jNo1 !== undefined) stampConductance(jCom1, jNo1, 1 / (isNc ? 1e10 : 0.01))
           }
           if (jCom2 !== undefined) {
-            if (jNc2 !== undefined) stampConductance(jCom2, jNc2, 1 / (isNc ? 0.01 : 1e6))
-            if (jNo2 !== undefined) stampConductance(jCom2, jNo2, 1 / (isNc ? 1e6 : 0.01))
+            if (jNc2 !== undefined) stampConductance(jCom2, jNc2, 1 / (isNc ? 0.01 : 1e10))
+            if (jNo2 !== undefined) stampConductance(jCom2, jNo2, 1 / (isNc ? 1e10 : 0.01))
           }
         }
       }
@@ -232,7 +234,7 @@ export function solveCircuitNew(
           const jB = pinToJunction[`${node.id}:b${i}`]
           if (jA === undefined || jB === undefined) continue
           const isClosed = dipState[`s${i}`]
-          stampConductance(jA, jB, 1 / (isClosed ? 0.01 : 1e6))
+          stampConductance(jA, jB, 1 / (isClosed ? 0.01 : 1e10))
         }
       }
 
@@ -242,7 +244,7 @@ export function solveCircuitNew(
         const j2 = pinToJunction[`${node.id}:b`]
         if (j1 === undefined || j2 === undefined) return
         const isBlown = activeFaults['fuse-blown'] || node.properties.blown as boolean || false
-        const r = isBlown ? 1e6 : 0.01
+        const r = isBlown ? 1e10 : 0.01
         stampConductance(j1, j2, 1 / r)
       }
 
@@ -266,8 +268,8 @@ export function solveCircuitNew(
           const actualState = (state === 'no' && !isStuck) ? 'no' : 'nc'
           const isNo = actualState === 'no'
 
-          if (jNo !== undefined) stampConductance(jCom, jNo, 1 / (isNo ? 0.01 : 1e6))
-          if (jNc !== undefined) stampConductance(jCom, jNc, 1 / (isNo ? 1e6 : 0.01))
+          if (jNo !== undefined) stampConductance(jCom, jNo, 1 / (isNo ? 0.01 : 1e10))
+          if (jNc !== undefined) stampConductance(jCom, jNc, 1 / (isNo ? 1e10 : 0.01))
         }
       }
 
@@ -279,11 +281,11 @@ export function solveCircuitNew(
         if (jGate === undefined || jDrain === undefined || jSource === undefined) return
 
         // Gate isolation
-        stampConductance(jGate, jSource, 1e-6)
+        stampConductance(jGate, jSource, 1e-10)
 
         // Drain-Source conduction path
         const isOn = mosfetStates[node.id] || false
-        const rDS = isOn ? 0.05 : 1e6
+        const rDS = isOn ? 0.05 : 1e10
         stampConductance(jDrain, jSource, 1 / rDS)
       }
 
@@ -302,7 +304,7 @@ export function solveCircuitNew(
           stampConductance(jAnode, jCathode, 1 / rForward)
           stampCurrentSource(jCathode, jAnode, vDrop / rForward) // Corrected: flow cathode to anode
         } else {
-          stampConductance(jAnode, jCathode, 1e-6)
+          stampConductance(jAnode, jCathode, 1e-10)
         }
       }
 
@@ -553,6 +555,16 @@ export function solveCircuitNew(
         const jGnd = pinToJunction[`${node.id}:gnd`]
         if (jVcc !== undefined && jGnd !== undefined) {
           stampConductance(jVcc, jGnd, 1 / 10000)
+        }
+        if (node.type === 'lm35' && jGnd !== undefined) {
+          const jOut = pinToJunction[`${node.id}:out`]
+          if (jOut !== undefined) {
+            const temp = Number(node.properties.temperature ?? 25)
+            // LM35 outputs 10 mV/°C (0.01 V/°C). Output resistance approx 1 ohm.
+            const vOut = temp * 0.01
+            stampConductance(jOut, jGnd, 1 / 1.0)
+            stampCurrentSource(jGnd, jOut, vOut / 1.0)
+          }
         }
       }
     })
@@ -816,7 +828,17 @@ export function solveCircuitNew(
         const C = capValue * 1e-6
         const g = C / Math.max(0.001, deltaTimeSec)
         const vPrev = Number(node.properties.storedCapVoltage ?? 0)
-        current = Math.abs(g * ((V[jPos] - V[jNeg]) - vPrev))
+        current = g * ((V[jPos] - V[jNeg]) - vPrev)
+      }
+    }
+
+    else if (node.type === 'super-capacitor') {
+      const jPos = pinToJunction[`${node.id}:pos`]
+      const jNeg = pinToJunction[`${node.id}:neg`]
+      if (jPos !== undefined && jNeg !== undefined) {
+        const vCap = Number(node.properties.storedVoltage ?? 0)
+        const rCap = 1.0
+        current = ((V[jPos] - V[jNeg]) - vCap) / rCap
       }
     }
 

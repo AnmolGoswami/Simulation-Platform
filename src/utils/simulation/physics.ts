@@ -61,6 +61,17 @@ export function updateSimulationPhysics(
   const getComponentCurrent = (nodeId: string): number =>
     Math.abs(solution.componentCurrents?.[nodeId] || 0.0)
 
+  // NEW: checks whether a pin has any wire attached at all, regardless of
+  // what the solver resolved its voltage to. Needed for pins like a fan's
+  // PWM line, where "no wire" and "wire resolving to 0V" mean different
+  // things electrically (floating vs. actively pulled/driven low).
+  const isPinConnected = (nodeId: string, pinId: string): boolean =>
+    edges.some(
+      (edge) =>
+        (edge.sourceNodeId === nodeId && edge.sourcePinId === pinId) ||
+        (edge.targetNodeId === nodeId && edge.targetPinId === pinId)
+    )
+
   nodes.forEach((node) => {
     nodePropertyUpdates[node.id] = {}
 
@@ -68,16 +79,20 @@ export function updateSimulationPhysics(
     if (node.type === 'super-capacitor') {
       const storedVoltage = Number(node.properties.storedVoltage ?? 0)
       const capValueF = Math.max(0.01, Number(node.properties.capacitance ?? 1.0)) // farads
-      const current = getComponentCurrent(node.id) // signed magnitude; direction inferred below
-      const pinV = getPinVoltage(node.id, 'pos')
+      const signedCurrent = solution.componentCurrents?.[node.id] || 0.0 // signed current from solver
+      const currentMag = Math.abs(signedCurrent)
+      const posV = getPinVoltage(node.id, 'pos')
+      const negV = getPinVoltage(node.id, 'neg')
+      const pinDiff = posV - negV
 
-      // Direction: charging if net/pin voltage exceeds stored voltage, else discharging
-      const isCharging = pinV > storedVoltage
-      const dV = (current / capValueF) * deltaTimeSec
+      // Direction: charging if net/pin difference exceeds stored voltage or signed current is positive
+      const isCharging = signedCurrent > 0.0001 || (pinDiff > storedVoltage + 0.001)
+      const dV = (currentMag / capValueF) * deltaTimeSec
       let newVoltage = storedVoltage
       if (isCharging) {
-        newVoltage = Math.min(pinV, storedVoltage + dV)
-      } else if (storedVoltage > 0) {
+        const maxLimit = Number(node.properties.voltage ?? 16.0)
+        newVoltage = Math.min(maxLimit, storedVoltage + dV)
+      } else if (storedVoltage > 0 && currentMag > 0.0001) {
         newVoltage = Math.max(0, storedVoltage - dV)
       }
 
@@ -107,19 +122,34 @@ export function updateSimulationPhysics(
 
     // D. PC Fan RPM and rotation speed (inertia-smoothed target speed)
     if (node.type === 'pc-fan') {
-      const pwmV = getPinVoltage(node.id, 'pwm')
-      const vcc = getPinVoltage(node.id, 'vcc')
-      const gnd = isPinGrounded(node.id, 'gnd')
+      // FIX: use differential voltage (vcc − gnd) instead of absolute
+      // voltage + isPinGrounded boolean.  The old code required the fan's
+      // GND pin to sit on a solver-recognized 0V ground junction, which
+      // fails when the only ground reference comes from a battery negative
+      // that findGroundJunctions() skipped because an MCU's GND was found
+      // first.  Differential voltage works regardless of ground topology
+      // — exactly how dc-motor already handles it.
+      const vccV = getPinVoltage(node.id, 'vcc')
+      const gndV = getPinVoltage(node.id, 'gnd')
+      const voltageDiff = vccV - gndV
+
+      // A 4-wire PC fan's PWM pin has an internal pull-up (open-drain
+      // logic). If nothing is wired to it, the real fan sees it as high and
+      // spins at full speed — it does NOT read as 0V/stopped.
+      const pwmWired = isPinConnected(node.id, 'pwm')
+      const pwmV = pwmWired ? getPinVoltage(node.id, 'pwm') : 5.0
 
       let targetSpeed = 0
       const isStalled = activeFaults['fan-stall'] || activeFaults['fan-failure']
-      if (vcc >= 5.0 && gnd && !isStalled) {
-        const pwmRatio = Math.min(1, pwmV / 5.0)
+      if (voltageDiff >= 2.5 && !isStalled) {
+        // ESP32 PWM pins output 3.3V logic high; scale duty appropriately
+        const pwmRatio = pwmWired ? Math.min(1.0, pwmV / 3.3) : 1.0
         targetSpeed = pwmRatio * 3200
       }
 
       const currentSpeed = Number(node.properties.speed || 0)
-      const nextSpeed = currentSpeed + (targetSpeed - currentSpeed) * 3.0 * deltaTimeSec
+      let nextSpeed = currentSpeed + (targetSpeed - currentSpeed) * 3.0 * deltaTimeSec
+      if (Math.abs(nextSpeed - targetSpeed) < 2.0) nextSpeed = targetSpeed
       nodePropertyUpdates[node.id].speed = nextSpeed
       nodePropertyUpdates[node.id].rpm = Math.round(nextSpeed)
     }
@@ -133,7 +163,8 @@ export function updateSimulationPhysics(
       const isJammed = activeFaults['motor-jam'] || activeFaults['motor-failure']
       const targetSpeed = isJammed ? 0 : (voltageDiff / 12.0) * 5000
       const currentSpeed = Number(node.properties.speed || 0)
-      const nextSpeed = currentSpeed + (targetSpeed - currentSpeed) * 1.5 * deltaTimeSec
+      let nextSpeed = currentSpeed + (targetSpeed - currentSpeed) * 1.5 * deltaTimeSec
+      if (Math.abs(nextSpeed - targetSpeed) < 2.0) nextSpeed = targetSpeed
 
       nodePropertyUpdates[node.id].speed = nextSpeed
       nodePropertyUpdates[node.id].rpm = Math.round(Math.abs(nextSpeed))

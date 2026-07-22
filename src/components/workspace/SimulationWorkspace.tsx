@@ -213,14 +213,79 @@ function WorkspaceCanvas() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setNodes(flowNodes)
+      setNodes((prevNodes) => {
+        const prevMap = new Map(prevNodes.map((n) => [n.id, n]))
+        return flowNodes.map((fn) => {
+          const prev = prevMap.get(fn.id)
+          if (!prev) return fn
+
+          const isDataEqual =
+            prev.data.componentType === fn.data.componentType &&
+            prev.data.label === fn.data.label &&
+            prev.data.rotation === fn.data.rotation &&
+            prev.data.color === fn.data.color
+
+          if (
+            isDataEqual &&
+            prev.position.x === fn.position.x &&
+            prev.position.y === fn.position.y &&
+            prev.selected === fn.selected &&
+            prev.zIndex === fn.zIndex
+          ) {
+            return prev
+          }
+
+          return {
+            ...prev,
+            ...fn,
+            measured: prev.measured ?? fn.measured,
+            width: prev.width ?? fn.width,
+            height: prev.height ?? fn.height,
+            dragging: prev.dragging ?? fn.dragging,
+            data: isDataEqual ? prev.data : fn.data,
+          }
+        })
+      })
     }, 0)
     return () => clearTimeout(timer)
   }, [flowNodes])
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setEdges(flowEdges)
+      setEdges((prevEdges) => {
+        const prevMap = new Map(prevEdges.map((e) => [e.id, e]))
+        return flowEdges.map((fe) => {
+          const prev = prevMap.get(fe.id)
+          if (!prev || !prev.data || !fe.data) return fe
+
+          const isDataEqual =
+            prev.data.color === fe.data.color &&
+            prev.data.thickness === fe.data.thickness &&
+            prev.data.label === fe.data.label &&
+            prev.data.isLocked === fe.data.isLocked &&
+            prev.data.isHidden === fe.data.isHidden &&
+            prev.data.curved === fe.data.curved &&
+            prev.data.currentFlow === fe.data.currentFlow &&
+            prev.data.bendingPoints === fe.data.bendingPoints
+
+          if (
+            isDataEqual &&
+            prev.source === fe.source &&
+            prev.sourceHandle === fe.sourceHandle &&
+            prev.target === fe.target &&
+            prev.targetHandle === fe.targetHandle &&
+            prev.selected === fe.selected
+          ) {
+            return prev
+          }
+
+          return {
+            ...prev,
+            ...fe,
+            data: isDataEqual ? prev.data : fe.data,
+          }
+        })
+      })
     }, 0)
     return () => clearTimeout(timer)
   }, [flowEdges])

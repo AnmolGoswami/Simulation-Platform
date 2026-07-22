@@ -14,6 +14,8 @@ import type {
 } from '@/types'
 import { getComponentDefinition } from '@/utils/componentDefinitions'
 import { runElectricalValidation } from '@/utils/electricalRules'
+import { FAULT_TOLERANT_NODES, FAULT_TOLERANT_EDGES, FAULT_TOLERANT_AIRCRAFT_CODE } from '@/utils/autoWiring'
+import { cleanupGlobalSimulationTimers } from '@/utils/simulation/runtime'
 
 interface HistoryState {
   nodes: WorkspaceNode[]
@@ -59,7 +61,7 @@ interface SimulatorState {
     loopFps: number
     powerDraw: number
   }
-  
+
   // Debugging & Instruments
   activeFaults: Record<string, boolean>
   multimeterProbes: { black: string | null; red: string | null; mode: 'VDC' | 'VAC' | 'RES' | 'CONT' | 'DIODE' }
@@ -166,6 +168,23 @@ function createLogId() {
   return `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
+/**
+ * Central z-index convention for the workspace. Breadboards sit at the
+ * back (1), microcontroller boards sit just above them (2), and every
+ * other component (batteries, fans, LEDs, etc.) sits on top (3).
+ *
+ * This MUST be used any time a node is created or its layering is reset,
+ * otherwise freshly-added nodes default to zIndex: undefined and can
+ * render *behind* a breadboard placed at zIndex: 1 — which is what was
+ * causing dropped components (e.g. battery, pc-fan) to visually vanish
+ * when placed on or near the breadboard.
+ */
+function getDefaultZIndex(type: ComponentType | string): number {
+  if (type === 'breadboard') return 1
+  if (type === 'arduino-uno' || type === 'esp32-devkit') return 2
+  return 3
+}
+
 const initialValidation: CircuitValidationResults = {
   errors: [],
   warnings: [],
@@ -175,80 +194,22 @@ const initialValidation: CircuitValidationResults = {
   voltageRails: {},
 }
 
-const initialNodes: WorkspaceNode[] = [
-  {
-    id: 'arduino-1',
-    type: 'arduino-uno',
-    position: { x: 50, y: 50 },
-    properties: { name: 'Arduino Uno R3', rotation: 0 },
-    zIndex: 2,
-  },
-  {
-    id: 'resistor-1',
-    type: 'resistor',
-    position: { x: 260, y: 60 },
-    properties: { name: '220 Ohm Resistor', resistance: 220, rotation: 0 },
-    zIndex: 3,
-  },
-  {
-    id: 'led-1',
-    type: 'led',
-    position: { x: 270, y: 140 },
-    properties: { name: 'Indicator LED', color: '#ef4444', rotation: 90 },
-    zIndex: 3,
-  }
-]
+const initialNodes: WorkspaceNode[] = FAULT_TOLERANT_NODES.map((n) => ({
+  ...n,
+  zIndex: getDefaultZIndex(n.type),
+}))
 
-const initialEdges: WorkspaceEdge[] = [
-  {
-    id: 'wire-1',
-    sourceNodeId: 'arduino-1',
-    sourcePinId: 'd2',
-    targetNodeId: 'resistor-1',
-    targetPinId: 'a',
-    color: 'red',
-    thickness: 2,
-  },
-  {
-    id: 'wire-2',
-    sourceNodeId: 'resistor-1',
-    sourcePinId: 'b',
-    targetNodeId: 'led-1',
-    targetPinId: 'anode',
-    color: 'red',
-    thickness: 2,
-  },
-  {
-    id: 'wire-3',
-    sourceNodeId: 'led-1',
-    sourcePinId: 'cathode',
-    targetNodeId: 'arduino-1',
-    targetPinId: 'gnd',
-    color: 'black',
-    thickness: 2,
-  }
-]
+const initialEdges: WorkspaceEdge[] = FAULT_TOLERANT_EDGES.map((e, idx) => ({
+  ...e,
+  id: `wire-ft-${idx}`,
+  thickness: 2,
+}))
 
-const initialCode = `// Arduino LED Blink Demonstration
-void setup() {
-  pinMode(2, OUTPUT);
-  Serial.begin(9600);
-  Serial.println("System Initialized...");
-}
-
-void loop() {
-  Serial.println("LED ON");
-  digitalWrite(2, HIGH);
-  delay(1000);
-  
-  Serial.println("LED OFF");
-  digitalWrite(2, LOW);
-  delay(1000);
-}`
+const initialCode = FAULT_TOLERANT_AIRCRAFT_CODE
 
 export const useSimulatorStore = create<SimulatorState>()(
   subscribeWithSelector((set, get) => ({
-    projectName: 'Arduino Blink Project',
+    projectName: 'Fault-Tolerant Aircraft Subsystem',
     projectId: null,
     nodes: initialNodes,
     edges: initialEdges,
@@ -312,6 +273,10 @@ export const useSimulatorStore = create<SimulatorState>()(
         type,
         position: snappedPosition,
         properties: { ...def.defaultProperties },
+        // FIX: previously omitted, which left new nodes with zIndex
+        // undefined — causing them to render behind breadboards (zIndex 1)
+        // whenever dropped on or near one, making them appear invisible.
+        zIndex: getDefaultZIndex(type),
       }
 
       set((state) => ({
@@ -354,6 +319,7 @@ export const useSimulatorStore = create<SimulatorState>()(
         id: createNodeId(),
         position: { x: node.position.x + 40, y: node.position.y + 40 },
         properties: { ...node.properties },
+        zIndex: node.zIndex ?? getDefaultZIndex(node.type),
       }
 
       set((state) => ({
@@ -502,20 +468,23 @@ export const useSimulatorStore = create<SimulatorState>()(
       },
     })),
 
-    resetSimulationState: () => set({
-      gpioPinStates: {},
-      simulationDiagnostics: {
-        loopCount: 0,
-        executionTime: 0,
-        loopFps: 0,
-        powerDraw: 0,
-      },
-    }),
+    resetSimulationState: () => {
+      cleanupGlobalSimulationTimers()
+      set({
+        gpioPinStates: {},
+        simulationDiagnostics: {
+          loopCount: 0,
+          executionTime: 0,
+          loopFps: 0,
+          powerDraw: 0,
+        },
+      })
+    },
 
     toggleFault: (faultId) => set((state) => {
       const active = !!state.activeFaults[faultId]
       const nextFaults = { ...state.activeFaults, [faultId]: !active }
-      
+
       // Log fault injection event in the timeline
       const timestamp = state.simulationDiagnostics.executionTime
       const msg = !active ? `🔴 Fault Injected: ${faultId.replace(/-/g, ' ').toUpperCase()}` : `🟢 Fault Cleared: ${faultId.replace(/-/g, ' ').toUpperCase()}`
@@ -560,7 +529,7 @@ export const useSimulatorStore = create<SimulatorState>()(
 
     togglePinProbe: (pinKey) => set((state) => {
       const active = state.probedPins.includes(pinKey)
-      const nextProbes = active 
+      const nextProbes = active
         ? state.probedPins.filter(p => p !== pinKey)
         : [...state.probedPins, pinKey].slice(-4) // Keep max 4 channels
 
@@ -605,18 +574,17 @@ export const useSimulatorStore = create<SimulatorState>()(
     sendToBack: (nodeId) => set((state) => {
       const zIndexes = state.nodes.map(n => n.zIndex ?? 0)
       const minZ = Math.min(2, ...zIndexes)
+      // FIX: clamp minimum zIndex to 2, never go to breadboard layer (1).
+      // Previously Math.max(1, ...) allowed components to land on zIndex 1
+      // which is the breadboard layer, making them render behind/under the
+      // breadboard and appearing invisible.
       return {
-        nodes: state.nodes.map(n => n.id === nodeId ? { ...n, zIndex: Math.max(1, minZ - 1) } : n)
+        nodes: state.nodes.map(n => n.id === nodeId ? { ...n, zIndex: Math.max(2, minZ - 1) } : n)
       }
     }),
 
     resetLayers: () => set((state) => ({
-      nodes: state.nodes.map(n => {
-        let z = 3
-        if (n.type === 'breadboard') z = 1
-        else if (n.type === 'arduino-uno' || n.type === 'esp32-devkit') z = 2
-        return { ...n, zIndex: z }
-      })
+      nodes: state.nodes.map(n => ({ ...n, zIndex: getDefaultZIndex(n.type) }))
     })),
 
     setProjectName: (name) => set({ projectName: name }),
@@ -624,7 +592,13 @@ export const useSimulatorStore = create<SimulatorState>()(
     loadProjectData: (project) => set({
       projectId: project.id,
       projectName: project.name,
-      nodes: project.nodes,
+      // FIX: normalize zIndex for all loaded nodes. Older saved projects
+      // may have nodes with undefined zIndex, causing them to render behind
+      // breadboards (zIndex 1) and appearing invisible.
+      nodes: project.nodes.map(n => ({
+        ...n,
+        zIndex: n.zIndex ?? getDefaultZIndex(n.type),
+      })),
       edges: project.edges,
       code: project.code,
       selectedNodeIds: [],
