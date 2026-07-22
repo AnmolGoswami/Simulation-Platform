@@ -32,6 +32,9 @@ interface SimulatorState {
   edges: WorkspaceEdge[]
   selectedNodeIds: string[]
   selectedEdgeIds: string[]
+  highlightedEdgeId: string | null
+  completedWireIds: string[]
+  isWireExplorerOpen: boolean
   snapToGrid: boolean
   gridSize: number
   showGrid: boolean
@@ -149,6 +152,9 @@ interface SimulatorState {
   // Actions - Circuit Validation
   setValidationResults: (results: CircuitValidationResults) => void
   setWireToolActive: (active: boolean) => void
+  setHighlightedEdgeId: (id: string | null) => void
+  toggleWireCompleted: (edgeId: string) => void
+  setWireExplorerOpen: (open: boolean) => void
 }
 
 const DEFAULT_PANEL_SIZES: PanelSizes = {
@@ -215,6 +221,9 @@ export const useSimulatorStore = create<SimulatorState>()(
     edges: initialEdges,
     selectedNodeIds: [],
     selectedEdgeIds: [],
+    highlightedEdgeId: null,
+    completedWireIds: [],
+    isWireExplorerOpen: false,
     snapToGrid: true,
     gridSize: 20,
     showGrid: true,
@@ -650,6 +659,14 @@ export const useSimulatorStore = create<SimulatorState>()(
 
     setValidationResults: (validation) => set({ validation }),
     setWireToolActive: (wireToolActive) => set({ wireToolActive }),
+    setHighlightedEdgeId: (highlightedEdgeId) => set({ highlightedEdgeId }),
+    toggleWireCompleted: (edgeId) =>
+      set((state) => ({
+        completedWireIds: state.completedWireIds.includes(edgeId)
+          ? state.completedWireIds.filter((id) => id !== edgeId)
+          : [...state.completedWireIds, edgeId],
+      })),
+    setWireExplorerOpen: (isWireExplorerOpen) => set({ isWireExplorerOpen }),
   })),
 )
 

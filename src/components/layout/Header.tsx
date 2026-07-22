@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plane, Zap, Save, FolderOpen, LogOut, LogIn, Loader2, Check, AlertCircle, Download, Image as ImageIcon, FileCode, Upload, ChevronDown } from 'lucide-react'
+import { Plane, Zap, Save, FolderOpen, LogOut, LogIn, Loader2, Check, AlertCircle, Download, Image as ImageIcon, FileCode, Upload, ChevronDown, Sparkles } from 'lucide-react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import type { User } from 'firebase/auth'
 import { auth } from '@/services/firebase'
@@ -468,6 +468,20 @@ export function Header() {
             onClick={() => setIsExportMenuOpen(false)}
           />
         )}
+
+        {/* Wire Explorer Button */}
+        <button
+          onClick={() => useSimulatorStore.setState((s) => ({ isWireExplorerOpen: !s.isWireExplorerOpen }))}
+          className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-all active:scale-95 ${
+            useSimulatorStore((s) => s.isWireExplorerOpen)
+              ? 'border-accent-400 bg-accent-500/20 text-accent-300 shadow-md ring-1 ring-accent-400/30'
+              : 'border-border bg-surface-800 text-text-secondary hover:bg-surface-750 hover:text-text-primary'
+          }`}
+          title="Open Wire Explorer, Connection Checklist, and X-Ray Inspector"
+        >
+          <Sparkles className="h-3.5 w-3.5 text-accent-400" />
+          <span>Wire Explorer</span>
+        </button>
 
         {/* Export Dropdown */}
         <div className="relative z-50">

@@ -31,9 +31,11 @@ import {
   RotateCw,
   Cable,
   Camera,
+  Sparkles,
 } from 'lucide-react'
 import SimulatorNode from './SimulatorNode'
 import WireEdge from './WireEdge'
+import { WireExplorerModal } from './WireExplorerModal'
 import { exportDiagramAsImage } from '@/utils/diagramExporter'
 import { BottomPanelToggle } from '@/components/layout/BottomPanel'
 import { useSimulatorStore } from '@/store/useSimulatorStore'
@@ -142,6 +144,7 @@ function WorkspaceCanvas() {
   const showGrid = useSimulatorStore((s) => s.showGrid)
   const wireToolActive = useSimulatorStore((s) => s.wireToolActive)
   const setWireToolActive = useSimulatorStore((s) => s.setWireToolActive)
+  const isWireExplorerOpen = useSimulatorStore((s) => s.isWireExplorerOpen)
 
   const workspaceBg = useSimulatorStore((s) => s.workspaceBackground)
   const gridStyle = useSimulatorStore((s) => s.gridStyle)
@@ -491,6 +494,12 @@ function WorkspaceCanvas() {
             active={wireToolActive}
           />
           <ToolbarButton
+            icon={Sparkles}
+            onClick={() => useSimulatorStore.setState({ isWireExplorerOpen: !isWireExplorerOpen })}
+            title="Wire Explorer & Real-World Wiring Checklist"
+            active={isWireExplorerOpen}
+          />
+          <ToolbarButton
             icon={Camera}
             onClick={() => exportDiagramAsImage('png')}
             title="Snapshot Diagram (PNG Image)"
@@ -551,6 +560,7 @@ export default function SimulationWorkspace() {
   return (
     <div className="relative h-full">
       <WorkspaceCanvas />
+      <WireExplorerModal />
       <MultimeterOverlay />
     </div>
   )

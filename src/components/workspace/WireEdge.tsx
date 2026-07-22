@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useReactFlow, type EdgeProps } from '@xyflow/react'
+import { useReactFlow, type EdgeProps, EdgeLabelRenderer } from '@xyflow/react'
 import { useSimulatorStore } from '@/store/useSimulatorStore'
 
 const COLOR_MAP: Record<string, string> = {
@@ -15,6 +15,10 @@ const COLOR_MAP: Record<string, string> = {
 
 export default function WireEdge({
   id,
+  source,
+  target,
+  sourceHandleId,
+  targetHandleId,
   sourceX,
   sourceY,
   targetX,
@@ -25,9 +29,11 @@ export default function WireEdge({
   const { screenToFlowPosition } = useReactFlow()
   const updateEdge = useSimulatorStore((s) => s.updateEdge)
   const pushHistory = useSimulatorStore((s) => s.pushHistory)
+  const highlightedEdgeId = useSimulatorStore((s) => s.highlightedEdgeId)
+  const nodes = useSimulatorStore((s) => s.nodes)
 
-  // Dragging state for bending points
   const [draggingIdx, setDraggingIdx] = useState<number | null>(null)
+  const [isHovered, setIsHovered] = useState(false)
 
   const wireColor = (data?.color as string) || 'red'
   const hexColor = COLOR_MAP[wireColor] || COLOR_MAP.red
@@ -40,6 +46,16 @@ export default function WireEdge({
   const currentFlow = (data?.currentFlow as number) || 0
 
   if (isHidden) return null
+
+  const isHighlighted = highlightedEdgeId === id || selected || isHovered
+  const isDimmed = highlightedEdgeId !== null && highlightedEdgeId !== id && !selected && !isHovered
+
+  const sourceNode = nodes.find((n) => n.id === source)
+  const targetNode = nodes.find((n) => n.id === target)
+  const sourceNodeName = String(sourceNode?.properties?.name || sourceNode?.type || source).replace(/-/g, ' ').toUpperCase()
+  const targetNodeName = String(targetNode?.properties?.name || targetNode?.type || target).replace(/-/g, ' ').toUpperCase()
+  const sourcePinLabel = sourceHandleId || (data?.sourcePinId as string) || 'pin'
+  const targetPinLabel = targetHandleId || (data?.targetPinId as string) || 'pin'
 
   // Calculate paths
   const getOrthogonalPath = (
@@ -153,29 +169,31 @@ export default function WireEdge({
   }
 
   // Styling
-  const shadowFilter = selected ? 'drop-shadow(0 0 4px rgba(59, 130, 246, 0.6))' : ''
+  const shadowFilter = isHighlighted ? 'drop-shadow(0 0 6px rgba(250, 204, 21, 0.85))' : (selected ? 'drop-shadow(0 0 4px rgba(59, 130, 246, 0.6))' : '')
   const isAnimating = currentFlow !== 0
 
   return (
-    <>
+    <g style={{ opacity: isDimmed ? 0.15 : 1, transition: 'opacity 0.2s ease-in-out' }}>
       {/* Thick invisible background path for easy hovering and double clicking */}
       <path
         d={edgePath}
         fill="none"
         stroke="transparent"
-        strokeWidth={14}
+        strokeWidth={16}
         className="cursor-pointer"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         onDoubleClick={handleDoubleClick}
       />
 
-      {/* Selected Glow Path */}
-      {selected && (
+      {/* Highlighted or Selected Glow Path */}
+      {isHighlighted && (
         <path
           d={edgePath}
           fill="none"
-          stroke="#60a5fa"
-          strokeWidth={thickness + 4}
-          opacity={0.3}
+          stroke={isHovered || highlightedEdgeId === id ? '#facc15' : '#60a5fa'}
+          strokeWidth={thickness + 5}
+          opacity={0.4}
           style={{ pointerEvents: 'none' }}
         />
       )}
@@ -185,13 +203,44 @@ export default function WireEdge({
         d={edgePath}
         fill="none"
         stroke={hexColor}
-        strokeWidth={thickness}
+        strokeWidth={isHighlighted ? thickness + 1.5 : thickness}
         style={{
           filter: shadowFilter,
           pointerEvents: 'none',
-          transition: 'stroke 0.15s, stroke-width 0.15s',
+          transition: 'stroke 0.15s, stroke-width 0.15s, filter 0.15s',
         }}
       />
+
+      {/* Floating Connection Tooltip & Inspector Badge */}
+      {(isHighlighted || isHovered) && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelCoords.x}px, ${labelCoords.y}px)`,
+              pointerEvents: 'all',
+            }}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            className="z-50 flex items-center gap-2 rounded-xl border border-border bg-surface-900/95 px-3 py-1.5 text-xs font-semibold text-text-primary shadow-2xl backdrop-blur-md transition-all animate-in fade-in zoom-in-95 cursor-default"
+          >
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="h-2.5 w-2.5 rounded-full shadow-sm shrink-0" style={{ backgroundColor: hexColor }} />
+              <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold">{wireColor} Wire</span>
+            </div>
+
+            <div className="h-3 w-px bg-border shrink-0" />
+
+            <div className="flex items-center gap-1.5 truncate max-w-[360px]">
+              <span className="text-accent-300 font-bold truncate">{sourceNodeName}</span>
+              <span className="rounded bg-surface-800 px-1.5 py-0.5 font-mono text-[10px] text-accent-400 border border-accent-500/20">{sourcePinLabel}</span>
+              <span className="text-text-muted px-0.5">➔</span>
+              <span className="text-emerald-300 font-bold truncate">{targetNodeName}</span>
+              <span className="rounded bg-surface-800 px-1.5 py-0.5 font-mono text-[10px] text-emerald-400 border border-emerald-500/20">{targetPinLabel}</span>
+            </div>
+          </div>
+        </EdgeLabelRenderer>
+      )}
 
       {/* Animated current flow path */}
       {isAnimating && (
@@ -294,6 +343,6 @@ export default function WireEdge({
           stroke-dasharray: 4, 6;
         }
       `}</style>
-    </>
+    </g>
   )
 }
