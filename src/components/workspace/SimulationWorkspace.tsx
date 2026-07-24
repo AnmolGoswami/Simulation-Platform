@@ -3,7 +3,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   BackgroundVariant,
   useReactFlow,
   ConnectionMode,
@@ -457,12 +456,6 @@ function WorkspaceCanvas() {
           showFitView={false}
           showInteractive={false}
           className="!bg-surface-800 !border-border !shadow-lg"
-        />
-
-        <MiniMap
-          nodeColor="#3b82f6"
-          maskColor="rgba(10, 14, 23, 0.8)"
-          className="!bg-surface-850 !border-border"
         />
 
         <Panel position="top-left" className="flex gap-1">
